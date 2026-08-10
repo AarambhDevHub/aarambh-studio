@@ -18,9 +18,11 @@ with hybrid Gated DeltaNet, DeepSeek Sparse Attention,
 fine-grained MoE with shared experts, Multi-Token Prediction (MTP), on-policy
 distillation, native quantization-aware training, native video/document input,
 bounded long-horizon tool-use chains, persistent forgetting diagnostics, and
-Max thinking mode (16,384-token budget). **v4.0.0-alpha.1** begins the v4 arc
-with Multi-Head Latent Attention (Phase 41) — a third attention kind that
-compresses the KV cache into a single low-rank latent per token.
+Max thinking mode (16,384-token budget). **v4.0.0-alpha.2** continues the v4 arc
+with Multi-Head Latent Attention (Phase 41) and a native Audio modality
+(Phase 42) — a frozen audio spectrogram transformer plus trainable projector
+that lets the model hear and reason about audio clips, the same
+frozen-encoder-plus-projector recipe vision, video, and documents use.
 
 > [!IMPORTANT]
 > This is a source and engineering project. It does not publish crates to
@@ -39,6 +41,7 @@ compresses the KV cache into a single low-rank latent per token.
 | Model formats | SafeTensors, INT8, GPTQ/AWQ INT4, GGUF, Hugging Face conversion, quantized KV cache |
 | Evaluation | Perplexity, MMLU-lite, HellaSwag, GSM8K, HumanEval-lite, preference, recall, multimodal/tool scorecards, capability forgetting curves, and MoE routing drift |
 | Vision | Frozen CLIP-style encoder, image/video/document fusion, temporal and 2D layout encoding, multimodal DoRA/QDoRA tuning |
+| Audio | Frozen audio spectrogram transformer, pure-Rust WAV decode + mel-spectrogram, `<audio>` token fusion, audio DoRA/QDoRA tuning (Phase 42) |
 | Runtime | CPU SIMD, Rayon attention, optional custom CUDA PTX kernels, Axum 0.8.9 HTTP/SSE server |
 | Guardrails | Prompt-injection checks, jailbreak checks, PII redaction, output scanning, streaming token safety, audit logs |
 | Self-learning | Opt-in critique, replay, verifier rewards, deferred CPU updates, CUDA vision mode, and post-commit forgetting probes |
@@ -95,7 +98,7 @@ produce useful language quality.
 
 ```text
 aarambh-studio train       Pretrain or continue a configured model
-aarambh-studio infer       Generate text or answer an image/video-grounded prompt
+aarambh-studio infer       Generate text or answer an image/video/document/audio-grounded prompt
 aarambh-studio agent       Orchestrate bounded caller-executed tool-use chains
 aarambh-studio eval        Run evaluation tasks and compare scorecards
 aarambh-studio quantise    Calibrate and export INT8/INT4 GGUF checkpoints
@@ -115,10 +118,11 @@ See the phase-specific docs for full walkthroughs with smoke fixtures:
 | Workflow | Guide |
 |---|---|
 | Train (CPU/GPU, MTP, MoE, distillation, QAT) | `aarambh-studio train --help` + [configs/](configs/) TOML examples |
-| Inference (text, thinking, image, video, document) | [docs/aarambh-studio-complete-guide.md](docs/aarambh-studio-complete-guide.md) |
+| Inference (text, thinking, image, video, document, audio) | [docs/aarambh-studio-complete-guide.md](docs/aarambh-studio-complete-guide.md) |
 | Tool-use agent chains | [docs/phase37_agent.md](docs/phase37_agent.md) |
 | Video understanding | [docs/phase35_video.md](docs/phase35_video.md) |
 | Document understanding | [docs/phase36_document.md](docs/phase36_document.md) |
+| Audio understanding | [docs/phase42_audio.md](docs/phase42_audio.md) |
 | OpenAI-compatible server | [docs/inference-server.md](docs/inference-server.md) |
 | Evaluation & forgetting diagnostics | [docs/phase38_forgetting.md](docs/phase38_forgetting.md) |
 | Multi-Head Latent Attention (MLA) | [docs/phase41_mla.md](docs/phase41_mla.md) |
@@ -174,7 +178,7 @@ any of `none`, `low`, `medium`, `high`, or `max`. The server also accepts
 
 ## Workspace
 
-The workspace contains 18 internal library crates and one CLI package:
+The workspace contains 19 internal library crates and one CLI package:
 
 ```text
 aarambh-studio-core        Shared config, device, dtype, errors, and traits
@@ -193,6 +197,7 @@ aarambh-studio-safety      Input, output, streaming, PII, and audit policies
 aarambh-studio-selflearn   Critique, replay, verifiers, and persistent update state
 aarambh-studio-eval        Evaluation tasks, scorecards, and comparisons
 aarambh-studio-vision      Image/video/document decode, preprocessing, temporal/layout fusion
+aarambh-studio-audio       WAV decode, mel-spectrogram, frozen audio encoder, fusion (Phase 42)
 aarambh-studio-distill     On-policy rollouts, teacher scoring, losses, and resume
 aarambh-studio-serve       Axum HTTP/SSE serving and continuous batching
 aarambh-studio             Command-line application
@@ -224,12 +229,15 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | v1 model, training, inference, safety, and self-learning design |
 | [ARCHITECTURE_V2.md](ARCHITECTURE_V2.md) | v2 long context, vision, MoE, distributed, tools, and serving additions |
 | [ARCHITECTURE_V3.md](ARCHITECTURE_V3.md) | v3 hybrid attention, DSA, fine-grained MoE, MTP, agents, and forgetting diagnostics |
+| [ARCHITECTURE_V4.md](ARCHITECTURE_V4.md) | v4 MLA, audio modality, sparse MoE dispatch, multi-node, test-time compute, RLAIF, sandboxed tools, multi-agent, RAG, merging, public server, system role, red-team, model card |
 | [ROADMAP.md](ROADMAP.md) | Completed v1 phases |
 | [ROADMAP_V2.md](ROADMAP_V2.md) | Completed v2 phases through the v2.0.0 release |
-| [ROADMAP_V3.md](ROADMAP_V3.md) | Current v3 delivery plan and status |
+| [ROADMAP_V3.md](ROADMAP_V3.md) | Completed v3 phases |
+| [ROADMAP_V4.md](ROADMAP_V4.md) | Current v4 delivery plan and status |
 | [SELF_LEARNING.md](SELF_LEARNING.md) | Text self-learning design |
 | [SELF_LEARNING_V2.md](SELF_LEARNING_V2.md) | Vision-aware self-learning design |
 | [SELF_LEARNING_V3.md](SELF_LEARNING_V3.md) | v3 self-learning and forgetting-diagnostic integration |
+| [SELF_LEARNING_V4.md](SELF_LEARNING_V4.md) | v4 self-learning scope across the v4 feature set |
 | [docs/aarambh-studio-config-toml-guide.md](docs/aarambh-studio-config-toml-guide.md) | Configuration field reference |
 | [docs/aarambh-studio-complete-guide.md](docs/aarambh-studio-complete-guide.md) | Beginner-oriented project walkthrough |
 | [docs/aarambh-studio-math-formulas-guide.md](docs/aarambh-studio-math-formulas-guide.md) | Mathematical foundations and worked examples |
@@ -241,6 +249,8 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
 | [docs/phase36_document.md](docs/phase36_document.md) | PDF/page ingestion, layout tuning, inference, and DocVQA ANLS evaluation |
 | [docs/phase37_agent.md](docs/phase37_agent.md) | Tool-chain protocol, safety, context policy, SFT, and response-path evaluation |
 | [docs/phase38_forgetting.md](docs/phase38_forgetting.md) | Capability curves, routing drift, training/self-learning hooks, and Manas JSONL |
+| [docs/phase41_mla.md](docs/phase41_mla.md) | MLA configuration, retrofit, and KV-cache report |
+| [docs/phase42_audio.md](docs/phase42_audio.md) | Audio encoder, mel-spectrogram, fusion, tuning, inference, and audio-QA evaluation |
 | [RELEASE.md](RELEASE.md) | Source-release process and artifact policy |
 | [CHANGELOG.md](CHANGELOG.md) | Versioned implementation history |
 
@@ -249,9 +259,9 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
 - No pretrained model, GGUF, adapter, or binary ships — you train your own.
 - MoE uses dense masked dispatch (not sparse grouped). Multi-GPU is single-node.
 - Tool chains are generated and orchestrated but never executed by the runtime.
-- Video is visual-only H.264 MP4; audio is unsupported.
+- Video is visual-only H.264 MP4; audio is WAV PCM only (no MP3/FLAC/Ogg).
 - Documents are pixel-based (no OCR/table parser).
-- The server is local/single-model; vision and self-learning are CLI workflows.
+- The server is local/single-model; vision, audio, and self-learning are CLI workflows.
 
 Full exclusions in the [versioned roadmaps](#documentation).
 

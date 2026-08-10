@@ -9,9 +9,9 @@ use candle_core::{DType, Device};
 
 use crate::report::{Scorecard, TaskScore};
 use crate::tasks::{
-    AssociativeRecallTask, DocumentQaTask, Gsm8kSubsetTask, HardProblemsTask, HellaSwagTask,
-    HumanEvalLiteTask, ImageCaptionTask, MmluLiteTask, PplTask, PreferenceTask, ToolCallingTask,
-    ToolChainTask, VideoQaTask, VqaTask,
+    AssociativeRecallTask, AudioQaTask, DocumentQaTask, Gsm8kSubsetTask, HardProblemsTask,
+    HellaSwagTask, HumanEvalLiteTask, ImageCaptionTask, MmluLiteTask, PplTask, PreferenceTask,
+    ToolCallingTask, ToolChainTask, VideoQaTask, VqaTask,
 };
 
 /// Evaluation run configuration.
@@ -188,6 +188,9 @@ fn selected_tasks(selectors: &[String], allow_code_exec: bool) -> Result<Vec<Box
             }
             "document-qa" | "document_qa" | "docvqa" | "document-qa-smoke"
             | "document_qa_smoke" => tasks.push(Box::new(DocumentQaTask)),
+            "audio-qa" | "audio_qa" | "audio-qa-smoke" | "audio_qa_smoke" => {
+                tasks.push(Box::new(AudioQaTask));
+            }
             "preference" | "dpo" | "preference-win-rate" | "preference_win_rate" => {
                 tasks.push(Box::new(PreferenceTask));
             }
@@ -201,7 +204,7 @@ fn selected_tasks(selectors: &[String], allow_code_exec: bool) -> Result<Vec<Box
             }
             other => {
                 return Err(AarambhError::Config(format!(
-                    "unknown eval task '{other}', expected ppl,mmlu,hellaswag,gsm8k,hard-problems,humaneval,preference,image-caption,vqa,video-qa,document-qa,tool-calling,tool-chain,associative-recall,all"
+                    "unknown eval task '{other}', expected ppl,mmlu,hellaswag,gsm8k,hard-problems,humaneval,preference,image-caption,vqa,video-qa,document-qa,audio-qa,tool-calling,tool-chain,associative-recall,all"
                 )));
             }
         }

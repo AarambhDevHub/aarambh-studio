@@ -12,6 +12,7 @@ cuda = [
     "aarambh-studio-data/cuda",
     "aarambh-studio-model/cuda",
     "aarambh-studio-vision/cuda",
+    "aarambh-studio-audio/cuda",
     "aarambh-studio-weights/cuda",
     "candle-core/nccl",
     "candle-nn/cuda",
@@ -23,6 +24,7 @@ aarambh-studio-data      = { path = "../aarambh-studio-data" }
 aarambh-studio-model     = { path = "../aarambh-studio-model" }
 aarambh-studio-tokenizer = { path = "../aarambh-studio-tokenizer" }
 aarambh-studio-vision    = { path = "../aarambh-studio-vision" }
+aarambh-studio-audio     = { path = "../aarambh-studio-audio" }
 aarambh-studio-weights   = { path = "../aarambh-studio-weights" }
 candle-core          = { workspace = true }
 candle-nn            = { workspace = true }

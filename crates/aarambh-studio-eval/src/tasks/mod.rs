@@ -6,6 +6,8 @@ use serde::de::DeserializeOwned;
 
 /// Associative key-value recall task.
 pub mod associative_recall;
+/// Native audio question-answering task (Phase 42).
+pub mod audio_qa;
 /// Native document question-answering task.
 pub mod document_qa;
 /// GSM8K subset task.
@@ -34,6 +36,7 @@ pub mod video_qa;
 pub mod vqa;
 
 pub use associative_recall::AssociativeRecallTask;
+pub use audio_qa::AudioQaTask;
 pub use document_qa::DocumentQaTask;
 pub use gsm8k_subset::Gsm8kSubsetTask;
 pub use hard_problems::HardProblemsTask;

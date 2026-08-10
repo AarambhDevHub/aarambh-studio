@@ -193,6 +193,14 @@ impl BpeTokenizer {
         Ok(())
     }
 
+    /// Verify that Phase 42 audio tokens and all earlier special tokens use required ids.
+    pub fn validate_audio_special_tokens(&self) -> Result<()> {
+        for (token, id) in special::AUDIO_SPECIAL_TOKENS {
+            self.validate_special_token(token, id)?;
+        }
+        Ok(())
+    }
+
     /// Return an image-capable tokenizer upgraded to the Phase 35 video vocabulary layout.
     ///
     /// Existing learned token ids beginning at 9 are shifted by three. Callers must apply
@@ -293,6 +301,57 @@ impl BpeTokenizer {
             merge_rank: self.merge_rank.clone(),
         };
         upgraded.validate_document_special_tokens()?;
+        Ok(upgraded)
+    }
+
+    /// Return a document-capable tokenizer upgraded to the Phase 42 audio layout.
+    ///
+    /// Existing learned token ids beginning at 15 are shifted by two. Callers must
+    /// apply the same migration to model embeddings and an untied language-model head.
+    pub fn upgraded_for_audio(&self) -> Result<Self> {
+        self.validate_document_special_tokens()?;
+        if self.validate_audio_special_tokens().is_ok() {
+            return Ok(self.clone());
+        }
+        for (token, _) in special::AUDIO_SPECIAL_TOKENS
+            .iter()
+            .skip(special::SPECIAL_TOKENS.len())
+        {
+            if let Some(id) = self.vocab.get_id(token) {
+                return Err(AarambhError::Tokenizer(format!(
+                    "cannot reserve audio token {token:?}: it already exists at id {id}"
+                )));
+            }
+        }
+
+        let insertion = special::AUDIO_ID;
+        let added = (special::AUDIO_SPECIAL_TOKENS.len() - special::SPECIAL_TOKENS.len()) as u32;
+        let mut token_to_id = HashMap::with_capacity(self.vocab.token_to_id.len() + added as usize);
+        for (token, id) in &self.vocab.token_to_id {
+            let migrated = if *id >= insertion { *id + added } else { *id };
+            token_to_id.insert(token.clone(), migrated);
+        }
+        for (token, id) in special::AUDIO_SPECIAL_TOKENS
+            .iter()
+            .skip(special::SPECIAL_TOKENS.len())
+        {
+            token_to_id.insert((*token).to_string(), *id);
+        }
+
+        let max_id = token_to_id.values().copied().max().unwrap_or(0);
+        let mut id_to_token = vec![String::new(); (max_id + 1) as usize];
+        for (token, id) in &token_to_id {
+            id_to_token[*id as usize] = token.clone();
+        }
+        let upgraded = Self {
+            vocab: Vocab {
+                token_to_id,
+                id_to_token,
+            },
+            merges: self.merges.clone(),
+            merge_rank: self.merge_rank.clone(),
+        };
+        upgraded.validate_audio_special_tokens()?;
         Ok(upgraded)
     }
 
@@ -417,7 +476,7 @@ impl TokenizerLike for BpeTokenizer {
         let mut rest = text;
 
         while !rest.is_empty() {
-            let next_special = special::SPECIAL_TOKENS
+            let next_special = special::AUDIO_SPECIAL_TOKENS
                 .iter()
                 .filter(|(token, id)| self.vocab.get_id(token) == Some(*id))
                 .filter_map(|(token, id)| rest.find(token).map(|pos| (pos, *token, *id)))
@@ -464,5 +523,91 @@ impl TokenizerLike for BpeTokenizer {
 
     fn bos_token_id(&self) -> Option<u32> {
         Some(special::BOS_ID)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::special::AUDIO_SPECIAL_TOKENS;
+    use aarambh_studio_core::TokenizerLike;
+
+    fn audio_tokenizer() -> BpeTokenizer {
+        // Build a minimal audio-capable tokenizer: the 17 reserved special tokens
+        // (ids 0..=16) plus two learned tokens (ids 17, 18).
+        let mut token_to_id = std::collections::HashMap::new();
+        for (token, id) in AUDIO_SPECIAL_TOKENS {
+            token_to_id.insert((*token).to_string(), id);
+        }
+        token_to_id.insert("hello".to_string(), 17);
+        token_to_id.insert("world".to_string(), 18);
+        let max_id = *token_to_id.values().max().unwrap();
+        let mut id_to_token = vec![String::new(); (max_id + 1) as usize];
+        for (token, id) in &token_to_id {
+            id_to_token[*id as usize] = token.clone();
+        }
+        BpeTokenizer {
+            vocab: Vocab {
+                token_to_id,
+                id_to_token,
+            },
+            merges: Vec::new(),
+            merge_rank: std::collections::HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn audio_tokenizer_encodes_audio_placeholder_as_single_token() {
+        // Regression test for Phase 42: the encoder must recognize <audio> as a
+        // single special token (id 15), not BPE-split it into characters. Before
+        // the encode path used AUDIO_SPECIAL_TOKENS, <audio> was invisible to the
+        // special-token splitter and the placeholder was never emitted.
+        let tokenizer = audio_tokenizer();
+        tokenizer.validate_audio_special_tokens().unwrap();
+        let ids = tokenizer.encode("prefix <audio> suffix").unwrap();
+        assert!(
+            ids.contains(&special::AUDIO_ID),
+            "encode must emit AUDIO id 15, got {ids:?}"
+        );
+        // The placeholder must appear exactly once.
+        assert_eq!(
+            ids.iter().filter(|&&id| id == special::AUDIO_ID).count(),
+            1,
+            "exactly one audio placeholder, got {ids:?}"
+        );
+    }
+
+    #[test]
+    fn audio_tokenizer_encodes_audio_end_boundary() {
+        let tokenizer = audio_tokenizer();
+        let ids = tokenizer.encode("<audio><audio_end>").unwrap();
+        assert_eq!(ids, vec![special::AUDIO_ID, special::AUDIO_END_ID]);
+    }
+
+    #[test]
+    fn text_only_tokenizer_does_not_match_audio_placeholder() {
+        // A text-only tokenizer (no audio tokens in vocab) must not treat the
+        // literal string "<audio>" as a special token — it BPE-splits it.
+        let mut token_to_id = std::collections::HashMap::new();
+        for (token, id) in special::TEXT_SPECIAL_TOKENS {
+            token_to_id.insert((*token).to_string(), id);
+        }
+        token_to_id.insert("a".to_string(), 7);
+        let max_id = *token_to_id.values().max().unwrap();
+        let mut id_to_token = vec![String::new(); (max_id + 1) as usize];
+        for (token, id) in &token_to_id {
+            id_to_token[*id as usize] = token.clone();
+        }
+        let tokenizer = BpeTokenizer {
+            vocab: Vocab {
+                token_to_id,
+                id_to_token,
+            },
+            merges: Vec::new(),
+            merge_rank: std::collections::HashMap::new(),
+        };
+        let ids = tokenizer.encode("<audio>").unwrap();
+        // No id 15 in a text-only tokenizer; the literal is BPE-split.
+        assert!(!ids.contains(&special::AUDIO_ID));
     }
 }

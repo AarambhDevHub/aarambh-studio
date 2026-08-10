@@ -4,9 +4,10 @@ version = 4
 
 [[package]]
 name = "aarambh-studio"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-agent",
+ "aarambh-studio-audio",
  "aarambh-studio-core",
  "aarambh-studio-data",
  "aarambh-studio-distill",
@@ -35,7 +36,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-agent"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "aarambh-studio-inference",
@@ -45,8 +46,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "aarambh-studio-audio"
+version = "4.0.0-alpha.2"
+dependencies = [
+ "aarambh-studio-core",
+ "candle-core",
+ "candle-nn",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "aarambh-studio-core"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "candle-core",
  "serde",
@@ -56,7 +68,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-data"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "candle-core",
@@ -67,7 +79,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-distill"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "aarambh-studio-inference",
@@ -84,9 +96,10 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-eval"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-agent",
+ "aarambh-studio-audio",
  "aarambh-studio-core",
  "aarambh-studio-finetune",
  "aarambh-studio-inference",
@@ -105,8 +118,9 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-finetune"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
+ "aarambh-studio-audio",
  "aarambh-studio-core",
  "aarambh-studio-kernel",
  "aarambh-studio-model",
@@ -125,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-inference"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "aarambh-studio-model",
@@ -141,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-kernel"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "candle-core",
@@ -155,7 +169,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-model"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "aarambh-studio-nn",
@@ -166,7 +180,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-nn"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "aarambh-studio-kernel",
@@ -177,7 +191,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-quant"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "candle-core",
@@ -188,7 +202,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-safety"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "aarambh-studio-inference",
@@ -199,7 +213,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-selflearn"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "aarambh-studio-eval",
@@ -220,7 +234,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-serve"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "aarambh-studio-inference",
@@ -244,7 +258,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-tokenizer"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "serde",
@@ -254,8 +268,9 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-train"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
+ "aarambh-studio-audio",
  "aarambh-studio-core",
  "aarambh-studio-data",
  "aarambh-studio-model",
@@ -271,7 +286,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-vision"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "candle-core",
@@ -287,7 +302,7 @@ dependencies = [
 
 [[package]]
 name = "aarambh-studio-weights"
-version = "4.0.0-alpha.1"
+version = "4.0.0-alpha.2"
 dependencies = [
  "aarambh-studio-core",
  "aarambh-studio-model",

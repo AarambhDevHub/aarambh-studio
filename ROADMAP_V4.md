@@ -207,7 +207,7 @@ expressiveness.
 
 **`aarambh-studio-nn`:**
 ```
-[ ] src/mla.rs
+[x] src/mla.rs
       down_proj: d_model -> latent_dim (e.g. 512), producing c_kv per
       token — this is the only thing cached, not per-head K/V
       per-head up-projection: c_kv -> K^(h), V^(h) via per-head learned
@@ -221,7 +221,7 @@ expressiveness.
       MlaCache — stores {c_kv latent, rope-half cache} per token,
       replacing the full per-head KV cache for MLA layers specifically
 
-[ ] src/attention.rs
+[x] src/attention.rs
       AttentionKind enum extended: Full | GatedDeltaNet | LatentMLA
       HybridAttentionSchedule extended to a 3-way per-layer assignment
       Full and GatedDeltaNet layers completely unchanged from v1/v3
@@ -229,37 +229,37 @@ expressiveness.
 
 **`aarambh-studio-model`:**
 ```
-[ ] Model config's attention_schedule accepts LatentMLA entries
-[ ] Backward compatible: a schedule with zero LatentMLA entries
+[x] Model config's attention_schedule accepts LatentMLA entries
+[x] Backward compatible: a schedule with zero LatentMLA entries
     reproduces exact v3.0.0 behaviour
-[ ] New hybrid variants of Medium/Large configs mixing all three kinds
+[x] New hybrid variants of Medium/Large configs mixing all three kinds
       configs/medium_hybrid_mla.toml
       configs/large_hybrid_mla.toml
 ```
 
 **`aarambh-studio-train`:**
 ```
-[ ] Continued-pretraining retrofit recipe, same pattern as v3 §29:
+[x] Continued-pretraining retrofit recipe, same pattern as v3 §29:
     load an existing v3 checkpoint, reinitialise scheduled layers as
     LatentMLA, keep everything else loaded as-is, train at reduced
     learning rate
-[ ] Retrofit validation against the eval harness (v2 §17) before/after,
+[x] Retrofit validation against the eval harness (v2 §17) before/after,
     same tolerance-band discipline as v3 §29
 ```
 
 **`aarambh-studio-weights`:**
 ```
-[ ] Partial-checkpoint loading extended to support MLA-layer weights
+[x] Partial-checkpoint loading extended to support MLA-layer weights
     (down_proj, per-head up-projections, rope-half projections)
     alongside the existing Full/GatedDeltaNet partial-load path
 ```
 
 **`aarambh-studio-inference`:**
 ```
-[ ] KV cache allocation per layer now depends on AttentionKind — MLA
+[x] KV cache allocation per layer now depends on AttentionKind — MLA
     layers allocate {latent_dim + rope_half_dim} per token instead of
     {2 × num_kv_heads × head_dim} — measurably smaller at long context
-[ ] Memory report tooling: `aarambh-studio eval --kv-cache-report` prints
+[x] Memory report tooling: `aarambh-studio eval --kv-cache-report` prints
     bytes/token per attention kind in the active schedule
 ```
 
@@ -315,6 +315,18 @@ git tag v4.0.0-alpha.1
 
 **Duration:** 14–18 days | **Hardware:** Kaggle (free quota)
 
+> **Status: Implemented in v4.0.0-alpha.2.** The new `aarambh-studio-audio`
+> crate (frozen `FrozenAudioEncoder`, pure-Rust WAV decode + mel-spectrogram,
+> trainable `AudioProjector`, `interleave_audio_tokens`, `AudioQaExample`
+> JSONL), the `<audio>`/`<audio_end>` tokenizer tokens (IDs 15/16) with
+> `validate_audio_special_tokens` / `upgraded_for_audio`, the
+> `convert --upgrade-audio-vocab` migration, the `[vision.audio]` config block,
+> the `finetune audio-dora`/`audio-qdora` two-stage trainer, the `infer --audio`
+> flag, the `audio-qa` eval task, the smoke/fixture/data-prep scripts, and the
+> full test suite (frozen-encoder gradient isolation, projector-only stage,
+> fusion length, thinking composability) are all in place. See
+> [docs/phase42_audio.md](docs/phase42_audio.md).
+
 ### Goal
 A frozen, pretrained audio encoder plus a trainable projector gives the
 model the ability to hear and reason about audio clips — speech and
@@ -326,52 +338,52 @@ rather than reinvented.
 
 **`aarambh-studio-audio`** *(new crate, Layer 3)*:
 ```
-[ ] src/lib.rs
-[ ] src/encoder.rs
+[x] src/lib.rs
+[x] src/encoder.rs
       FrozenAudioEncoder — a small (~40–90M param), permissively-
       licensed, pretrained speech/audio transformer encoder, loaded as
       SafeTensors through candle-core, same loading path
       aarambh-studio-weights already uses (identical policy to v2 §24's
       CLIP loading — no PyTorch bindings, no ONNX, no Python FFI)
-[ ] src/preprocess.rs
+[x] src/preprocess.rs
       Mel-spectrogram extraction from raw audio, using a pure-Rust or
       permissively-licensed system-library audio decode path — same
       dependency discipline v3 §35 established for video container
       decode: no Python-based audio ML tooling, local decode only
-[ ] src/projector.rs
+[x] src/projector.rs
       Projector MLP: audio_d_model -> hidden -> llm_d_model, trainable,
       mirrors vision's projector.rs exactly in structure
-[ ] src/fusion.rs
+[x] src/fusion.rs
       interleave_audio_tokens() — generalises v2 §24's
       interleave_image_tokens() into a shared modal-token-splicing
       pattern, spliced at the <audio> special token position
-[ ] src/instruct_data.rs
+[x] src/instruct_data.rs
       AudioQaExample, JSONL schema, mirrors vision's instruct_data.rs
 ```
 
 **`aarambh-studio-tokenizer`:**
 ```
-[ ] <audio> / <audio_end> reserved special token strings, IDs,
+[x] <audio> / <audio_end> reserved special token strings, IDs,
     validation — same pattern as v2's <image>/<image_end> and v3's
     <video>/<document> tokens
 ```
 
 **`aarambh-studio-finetune`:**
 ```
-[ ] vlm_dora.rs extended to accept audio-token-prefixed sequences —
+[x] vlm_dora.rs extended to accept audio-token-prefixed sequences —
     same DoRA-adapted-LLM + frozen-encoder two-stage recipe as v2 §25,
     substituting audio for image
 ```
 
 **`aarambh-studio-eval`:**
 ```
-[ ] tasks/audio_qa_subset.rs — free, public audio-QA benchmark subset,
+[x] tasks/audio_qa_subset.rs — free, public audio-QA benchmark subset,
     implements the shared EvalTask trait (v2 §22)
 ```
 
 **`aarambh-studio-inference`:**
 ```
-[ ] --audio CLI flag on infer, parallel to --image (v2) and
+[x] --audio CLI flag on infer, parallel to --image (v2) and
     --video/--document (v3)
 ```
 
