@@ -1,0 +1,51 @@
+tokenizer_path = "checkpoints/audio_smoke/tokenizer.json"
+vocab_size = 8008
+validation_split = 0.0
+shuffle = false
+resume = false
+device = "cpu"
+dtype = "f32"
+
+[model]
+vocab_size = 8008
+hidden_dim = 384
+ffn_dim = 1024
+n_layers = 8
+n_heads = 6
+n_kv_heads = 2
+max_seq_len = 512
+rope_theta = 10000.0
+norm_eps = 0.00001
+tie_embeddings = true
+
+[train]
+checkpoint_dir = "adapters/audio_qa_smoke"
+
+[vision]
+mode = "vlm_instruction"
+base_model_path = "checkpoints/audio_smoke/model.safetensors"
+clip_config_path = "data/vision_smoke/clip_tiny_config.json"
+clip_weights_path = "data/vision_smoke/clip_tiny.safetensors"
+projector_path = "adapters/audio_qa_smoke/projector.safetensors"
+image_root = "data/vision_smoke/images"
+projector_hidden_mult = 1
+max_caption_tokens = 32
+max_samples = 4
+
+[vision.audio]
+audio_root = "data/audio_smoke/audio"
+encoder_config_path = "data/audio_smoke/audio_encoder_tiny_config.json"
+encoder_weights_path = "data/audio_smoke/audio_encoder_tiny.safetensors"
+encoder_batch_size = 2
+feature_cache_entries = 4
+
+[vision.audio.mel]
+sample_rate = 16000
+n_fft = 256
+hop_length = 128
+n_mels = 16
+fmin = 0.0
+fmax = 8000.0
+max_audio_seconds = 0.136
+power = 2.0
+log_eps = 0.0000000001

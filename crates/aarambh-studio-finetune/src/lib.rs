@@ -63,7 +63,7 @@ pub use verifier::{
     extract_final_number,
 };
 pub use vlm_dora::{
-    DocumentVlmDoraRunConfig, VideoVlmDoraRunConfig, VlmDoraMetrics, VlmDoraRunConfig,
-    VlmDoraTrainer, run_document_vlm_dora_from_config, run_video_vlm_dora_from_config,
-    run_vlm_dora_from_config,
+    AudioVlmDoraRunConfig, DocumentVlmDoraRunConfig, VideoVlmDoraRunConfig, VlmDoraMetrics,
+    VlmDoraRunConfig, VlmDoraTrainer, run_audio_vlm_dora_from_config,
+    run_document_vlm_dora_from_config, run_video_vlm_dora_from_config, run_vlm_dora_from_config,
 };

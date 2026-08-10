@@ -9,6 +9,7 @@ rust-version.workspace = true
 default = []
 cuda = [
     "aarambh-studio-agent/cuda",
+    "aarambh-studio-audio/cuda",
     "aarambh-studio-core/cuda",
     "aarambh-studio-finetune/cuda",
     "aarambh-studio-model/cuda",
@@ -20,6 +21,7 @@ cuda = [
 
 [dependencies]
 aarambh-studio-agent     = { path = "../aarambh-studio-agent" }
+aarambh-studio-audio     = { path = "../aarambh-studio-audio" }
 aarambh-studio-core      = { path = "../aarambh-studio-core" }
 aarambh-studio-finetune  = { path = "../aarambh-studio-finetune" }
 aarambh-studio-inference = { path = "../aarambh-studio-inference" }

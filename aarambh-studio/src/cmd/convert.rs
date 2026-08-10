@@ -33,6 +33,13 @@ pub struct ConvertArgs {
         conflicts_with = "upgrade_video_vocab"
     )]
     pub upgrade_document_vocab: bool,
+    #[arg(
+        long,
+        requires = "tokenizer",
+        requires = "output_tokenizer",
+        conflicts_with_all = ["upgrade_video_vocab", "upgrade_document_vocab"]
+    )]
+    pub upgrade_audio_vocab: bool,
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
     #[arg(long)]
@@ -123,6 +130,46 @@ pub fn run(args: ConvertArgs) -> anyhow::Result<()> {
         upgraded.save_pretrained(output_tokenizer)?;
         eprintln!(
             "upgraded document vocabulary {} -> {} rows across {} tensors; model={} tokenizer={}",
+            report.old_vocab_size,
+            report.new_vocab_size,
+            report.expanded_tensors,
+            args.output.display(),
+            output_tokenizer.display()
+        );
+        return Ok(());
+    }
+
+    if args.upgrade_audio_vocab {
+        if args.gguf {
+            return Err(anyhow::anyhow!(
+                "--upgrade-audio-vocab requires SafeTensors input; migrate first, then quantise the migrated checkpoint"
+            ));
+        }
+        let tokenizer_path = args.tokenizer.as_ref().expect("required by clap");
+        let output_tokenizer = args.output_tokenizer.as_ref().expect("required by clap");
+        let tokenizer = BpeTokenizer::from_pretrained(tokenizer_path)?;
+        if tokenizer.validate_audio_special_tokens().is_ok() {
+            return Err(anyhow::anyhow!(
+                "tokenizer {} already contains the Phase 42 audio vocabulary",
+                tokenizer_path.display()
+            ));
+        }
+        tokenizer.validate_document_special_tokens()?;
+        let old_vocab_size = tokenizer.vocab_size();
+        let upgraded = tokenizer.upgraded_for_audio()?;
+        write_parent_dir(output_tokenizer)?;
+        let report = expand_safetensors_vocabulary(
+            &args.input,
+            &args.output,
+            old_vocab_size,
+            &VocabularyExpansion {
+                insertion_id: aarambh_studio_tokenizer::AUDIO_ID as usize,
+                source_ids: vec![IMAGE_ID as usize, IMAGE_END_ID as usize],
+            },
+        )?;
+        upgraded.save_pretrained(output_tokenizer)?;
+        eprintln!(
+            "upgraded audio vocabulary {} -> {} rows across {} tensors; model={} tokenizer={}",
             report.old_vocab_size,
             report.new_vocab_size,
             report.expanded_tensors,

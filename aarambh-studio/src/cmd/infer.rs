@@ -3,6 +3,10 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use aarambh_studio_audio::{
+    AudioEncoderConfig, AudioModel, AudioPreprocessor, AudioProjector, AudioProjectorConfig,
+    FrozenAudioEncoder, interleave_audio_tokens,
+};
 use aarambh_studio_core::{AarambhError, TokenizerLike};
 use aarambh_studio_finetune::{Verifier, VerifierKind};
 use aarambh_studio_inference::{
@@ -19,9 +23,9 @@ use aarambh_studio_selflearn::{
     VisionCache, VisionVerifierKind, require_vision_hardware,
 };
 use aarambh_studio_tokenizer::{
-    ASSISTANT, BpeTokenizer, DOCUMENT, DOCUMENT_END, DOCUMENT_ID, FRAME_SEP, FRAME_SEP_ID, IMAGE,
-    IMAGE_END, IMAGE_ID, PAGE_SEP, PAGE_SEP_ID, THINK_END_ID, THINK_START_ID, USER, VIDEO,
-    VIDEO_END, VIDEO_ID,
+    ASSISTANT, AUDIO, AUDIO_END, AUDIO_ID, BpeTokenizer, DOCUMENT, DOCUMENT_END, DOCUMENT_ID,
+    FRAME_SEP, FRAME_SEP_ID, IMAGE, IMAGE_END, IMAGE_ID, PAGE_SEP, PAGE_SEP_ID, THINK_END_ID,
+    THINK_START_ID, USER, VIDEO, VIDEO_END, VIDEO_ID,
 };
 use aarambh_studio_train::TrainingRunConfig;
 use aarambh_studio_vision::{
@@ -56,6 +60,8 @@ pub struct InferArgs {
     pub video: Option<PathBuf>,
     #[arg(long, conflicts_with_all = ["image", "video"])]
     pub document: Option<PathBuf>,
+    #[arg(long, conflicts_with_all = ["image", "video", "document"])]
+    pub audio: Option<PathBuf>,
     #[arg(long, requires = "document")]
     pub pages: Option<String>,
     #[arg(long, requires = "document")]
@@ -204,9 +210,9 @@ pub fn run(args: InferArgs) -> anyhow::Result<()> {
         );
     }
     if self_learn_mode.is_enabled() {
-        if args.video.is_some() || args.document.is_some() {
+        if args.video.is_some() || args.document.is_some() || args.audio.is_some() {
             return Err(AarambhError::Unsupported(
-                "video/document self-learning is not supported; use text/image self-learning or disable --self-learn"
+                "video/document/audio self-learning is not supported; use text/image self-learning or disable --self-learn"
                     .into(),
             )
             .into());
@@ -285,6 +291,20 @@ pub fn run(args: InferArgs) -> anyhow::Result<()> {
             &run_config,
             engine,
             image_path,
+            dtype,
+            config,
+            prompt,
+            safety_mode,
+            thinking_mode,
+            tokenizer_for_view,
+        );
+    }
+    if let Some(audio_path) = args.audio.clone() {
+        return run_audio_infer(
+            &args,
+            &run_config,
+            engine,
+            audio_path,
             dtype,
             config,
             prompt,
@@ -549,9 +569,13 @@ fn validate_speculative_args(
         }
         return Ok(());
     }
-    if args.image.is_some() || args.video.is_some() || args.document.is_some() {
+    if args.image.is_some()
+        || args.video.is_some()
+        || args.document.is_some()
+        || args.audio.is_some()
+    {
         return Err(AarambhError::Unsupported(
-            "speculative decoding supports text inference only; --image/--video/--document are not supported"
+            "speculative decoding supports text inference only; --image/--video/--document/--audio are not supported"
                 .into(),
         )
         .into());
@@ -625,7 +649,11 @@ fn load_tool_calling_config(
         }
         return Ok(None);
     };
-    if args.image.is_some() || args.video.is_some() || args.document.is_some() {
+    if args.image.is_some()
+        || args.video.is_some()
+        || args.document.is_some()
+        || args.audio.is_some()
+    {
         return Err(AarambhError::Unsupported(
             "Phase 26 tool calling supports text inference only; multimodal inputs are not supported"
                 .into(),
@@ -1357,6 +1385,206 @@ pub(super) fn project_document_tokens(
         ),
     )?;
     Ok((projected, pages.len()))
+}
+
+pub(super) struct AudioRuntime {
+    model: AudioModel,
+    preprocess: AudioPreprocessor,
+}
+
+pub(super) fn load_audio_runtime(
+    run_config: &TrainingRunConfig,
+    device: &candle_core::Device,
+    dtype: candle_core::DType,
+) -> anyhow::Result<AudioRuntime> {
+    let vision = run_config
+        .vision
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("--audio requires a [vision] config block"))?;
+    let audio = vision
+        .audio
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("--audio requires a [vision.audio] config block"))?;
+    audio.validate()?;
+    let encoder_config = AudioEncoderConfig::from_json(&audio.encoder_config_path)?;
+    let encoder = FrozenAudioEncoder::load_pretrained(
+        &audio.encoder_weights_path,
+        encoder_config.clone(),
+        device,
+        dtype,
+    )?;
+    let projector_path = match &vision.projector_path {
+        Some(path) => path.clone(),
+        None => default_model_path(&run_config.train.checkpoint_dir)?,
+    };
+    let projector_config = AudioProjectorConfig {
+        audio_d_model: encoder_config.audio_d_model,
+        llm_d_model: run_config.model.hidden_dim,
+        hidden_mult: vision.projector_hidden_mult,
+    };
+    let projector =
+        AudioProjector::load_safetensors(&projector_path, projector_config, device, dtype)?;
+    let preprocess = AudioPreprocessor::new(audio.mel.clone())?;
+    Ok(AudioRuntime {
+        model: AudioModel::new(encoder, projector),
+        preprocess,
+    })
+}
+
+fn ensure_audio_prompt(prompt: &str) -> String {
+    if prompt.contains(AUDIO) {
+        prompt.to_string()
+    } else {
+        format!("{AUDIO}{AUDIO_END}\n{prompt}")
+    }
+}
+
+fn build_audio_prompt_embeddings(
+    engine: &InferenceEngine,
+    runtime: &AudioRuntime,
+    audio_path: &Path,
+    prompt: &str,
+) -> aarambh_studio_core::Result<Tensor> {
+    engine.tokenizer().validate_audio_special_tokens()?;
+    let mut prompt_ids = engine.tokenizer().encode(prompt)?;
+    if prompt_ids.is_empty() {
+        if let Some(bos) = engine.tokenizer().bos_token_id() {
+            prompt_ids.push(bos);
+        } else {
+            return Err(AarambhError::Config(
+                "prompt produced no tokens and tokenizer has no BOS token".into(),
+            ));
+        }
+    }
+    let text = Tensor::from_vec(prompt_ids.clone(), (1, prompt_ids.len()), engine.device())?;
+    let text_embeddings = engine.model().embed_tokens(&text)?;
+    let audio_tokens = project_audio_tokens(runtime, audio_path, engine.device())?;
+    interleave_audio_tokens(&prompt_ids, &text_embeddings, &audio_tokens, AUDIO_ID)
+}
+
+pub(super) fn project_audio_tokens(
+    runtime: &AudioRuntime,
+    audio_path: &Path,
+    device: &candle_core::Device,
+) -> aarambh_studio_core::Result<Tensor> {
+    let spectrogram = runtime
+        .preprocess
+        .preprocess_path(audio_path, device)?
+        .unsqueeze(0)?;
+    runtime.model.forward(&spectrogram)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_audio_infer(
+    args: &InferArgs,
+    run_config: &TrainingRunConfig,
+    mut engine: InferenceEngine,
+    audio_path: PathBuf,
+    dtype: candle_core::DType,
+    config: GenerationConfig,
+    prompt: String,
+    safety_mode: SafetyMode,
+    thinking_mode: ThinkingMode,
+    tokenizer_for_view: BpeTokenizer,
+) -> anyhow::Result<()> {
+    let runtime = load_audio_runtime(run_config, engine.device(), dtype)?;
+    let prompt = ensure_audio_prompt(&prompt);
+
+    if let Some(policy) = SafetyPolicy::for_mode(safety_mode)
+        .map(|policy| policy.with_audit_path(&args.safety_audit_log))
+    {
+        let adapter = AudioSafetyAdapter {
+            engine,
+            runtime,
+            audio_path,
+        };
+        let mut guard = SafetyGuard::new(adapter, policy);
+        let mut stream_state = StreamState::default();
+        let response = if args.stream {
+            guard.generate_streaming_with_callback(&prompt, config, print_safe_stream_event)?
+        } else {
+            guard.generate_with_callback(&prompt, config, |step| {
+                if args.predict_view {
+                    print!(
+                        "{}",
+                        predict_view::render(
+                            step,
+                            &tokenizer_for_view,
+                            args.temperature,
+                            args.top_p,
+                        )
+                    );
+                    io::stdout().flush()?;
+                }
+                Ok(())
+            })?
+        };
+        print_safe_response(&response, thinking_mode, args.stream, &mut stream_state)?;
+        io::stdout().flush()?;
+        if let Some(output) = &response.output {
+            eprintln!("finish_reason={:?}", output.finish_reason);
+        } else {
+            eprintln!("finish_reason=SafetyBlocked");
+        }
+        return Ok(());
+    }
+
+    let embeddings = build_audio_prompt_embeddings(&engine, &runtime, &audio_path, &prompt)?;
+    let mut stream_state = StreamState::default();
+    let output = engine.generate_with_embeddings_callback(&embeddings, config, |step| {
+        if args.predict_view {
+            print!(
+                "{}",
+                predict_view::render(step, &tokenizer_for_view, args.temperature, args.top_p)
+            );
+        }
+        if args.stream {
+            stream_step(step, thinking_mode, &mut stream_state)?;
+        }
+        if args.predict_view || args.stream {
+            io::stdout().flush()?;
+        }
+        Ok(())
+    })?;
+    if args.stream {
+        finish_stream(&mut stream_state);
+    } else {
+        print_generation_output(&output, thinking_mode)?;
+    }
+    io::stdout().flush()?;
+    eprintln!("finish_reason={:?}", output.finish_reason);
+    Ok(())
+}
+
+struct AudioSafetyAdapter {
+    engine: InferenceEngine,
+    runtime: AudioRuntime,
+    audio_path: PathBuf,
+}
+
+impl SafetyGenerator for AudioSafetyAdapter {
+    fn generate(
+        &mut self,
+        prompt: &str,
+        config: GenerationConfig,
+    ) -> aarambh_studio_core::Result<GenerationOutput> {
+        self.generate_with_callback(prompt, config, |_| Ok(()))
+    }
+
+    fn generate_with_callback<F>(
+        &mut self,
+        prompt: &str,
+        config: GenerationConfig,
+        on_step: F,
+    ) -> aarambh_studio_core::Result<GenerationOutput>
+    where
+        F: FnMut(&GenerationStep) -> aarambh_studio_core::Result<()>,
+    {
+        let embeddings =
+            build_audio_prompt_embeddings(&self.engine, &self.runtime, &self.audio_path, prompt)?;
+        self.engine
+            .generate_with_embeddings_callback(&embeddings, config, on_step)
+    }
 }
 
 fn build_video_prompt_embeddings(
@@ -2120,6 +2348,7 @@ mod tests {
             image: None,
             video: None,
             document: None,
+            audio: None,
             pages: None,
             document_dpi: None,
             max_document_pages: None,

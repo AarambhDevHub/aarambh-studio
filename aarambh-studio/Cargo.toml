@@ -9,6 +9,7 @@ rust-version.workspace = true
 default = []
 cuda = [
     "aarambh-studio-agent/cuda",
+    "aarambh-studio-audio/cuda",
     "aarambh-studio-core/cuda",
     "aarambh-studio-data/cuda",
     "aarambh-studio-distill/cuda",
@@ -28,6 +29,7 @@ cuda = [
 
 [dependencies]
 aarambh-studio-agent     = { path = "../crates/aarambh-studio-agent" }
+aarambh-studio-audio     = { path = "../crates/aarambh-studio-audio" }
 aarambh-studio-core      = { path = "../crates/aarambh-studio-core" }
 aarambh-studio-data      = { path = "../crates/aarambh-studio-data" }
 aarambh-studio-distill   = { path = "../crates/aarambh-studio-distill" }

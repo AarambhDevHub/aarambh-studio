@@ -2,6 +2,64 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0-alpha.2] - 2026-08-09
+
+### Added
+
+- **Phase 42 — Audio Modality:** A fourth input sense — audio — following the
+  exact frozen-encoder-plus-trainable-projector pattern v2 §24 established for
+  vision and v3 §35–36 reused for video and documents. A frozen, pretrained
+  audio spectrogram transformer converts a log-mel spectrogram into a grid of
+  patch embeddings; a trainable projector maps them into the decoder's
+  `d_model` space; the result is spliced into the token sequence at the
+  `<audio>` special token position. Nothing about the decoder, the thinking
+  engine, or tool calling changes.
+  - New `aarambh-studio-audio` crate (Layer 3, workspace package count
+    19 → 20): `FrozenAudioEncoder` (AST-style patchify + transformer blocks,
+    `load_pretrained` via `VarBuilder::from_mmaped_safetensors`, same loading
+    path as CLIP), `AudioPreprocessor` (pure-Rust WAV decode for PCM
+    8/16/24/32-bit + 32/64-bit float, linear resampling, Hann window, radix-2
+    Cooley-Tukey FFT, triangular mel filterbank, log-mel normalization — zero
+    new dependencies), `AudioProjector` (two-layer GELU MLP mirroring
+    `VisionProjector`), `interleave_audio_tokens`, `AudioQaExample` +
+    `load_audio_qa_jsonl` (caption, QA, and LLaVA conversation formats).
+  - Tokenizer: `<audio>`/`<audio_end>` reserved special tokens (IDs 15/16),
+    `AUDIO_SPECIAL_TOKENS` table (17 entries, strict superset of the Phase 36
+    document table), `BpeTokenizer::validate_audio_special_tokens` and
+    `upgraded_for_audio` (insertion at ID 15, +2 rows, shifts learned IDs ≥ 15).
+  - `convert --upgrade-audio-vocab` applies the vocabulary migration to a
+    SafeTensors checkpoint and tokenizer together
+    (`VocabularyExpansion { insertion_id: 15, source_ids: [IMAGE_ID, IMAGE_END_ID] }`).
+  - `[vision.audio]` config block (`AudioTrainingConfig`: audio_root, encoder
+    config/weights paths, `mel: MelSpectrogramConfig`, encoder_batch_size,
+    feature_cache_entries) under the shared `[vision]` multimodal block.
+  - `finetune audio-dora` / `audio-qdora` subcommands: a self-contained
+    two-stage DoRA trainer (`run_audio_vlm_dora_from_config`) reusing
+    `DoraAarambhModel`, `AdamW::from_varmap`, `CosineScheduleWithWarmup`,
+    `accumulate_for_optimizer`, `cross_entropy_loss`, and `save_adapter`, with
+    audio-specific `audio_example_loss` / `audio_labels_and_mask` and an
+    `audio_adapter_config.json` artifact.
+  - `infer --audio <path>` flag (conflicts with `--image`/`--video`/`--document`)
+    with `AudioRuntime`, `build_audio_prompt_embeddings`,
+    `project_audio_tokens`, `run_audio_infer`, and an `AudioSafetyAdapter`
+    implementing `SafetyGenerator`.
+  - `eval --tasks audio-qa` / `audio-qa-smoke` task implementing the shared
+    `EvalTask` trait.
+  - New configs: `configs/audio_qa_smoke.toml`,
+    `configs/audio_qa_smoke_infer.toml`; new scripts
+    `scripts/phase42_make_audio_smoke_fixture.py`,
+    `scripts/phase42_prepare_audio_data.sh`, `scripts/phase42_smoke.sh`; new
+    doc `docs/phase42_audio.md`.
+  - Tests: `frozen_audio_encoder_never_receives_gradients`,
+    `projector_pretrain_stage_trains_only_projector_weights`,
+    `audio_token_fusion_produces_expected_sequence_length`,
+    `thinking_controller_behaves_identically_after_audio_context`, plus
+    WAV-decode, FFT-frequency-recovery, mel-frame-counting, projector-width,
+    fusion-placeholder, JSONL-parsing, and tokenizer-table-consistency tests.
+  - Audio **understanding** only (no generation); WAV PCM only (no MP3/FLAC/Ogg);
+    mel extraction is pure-Rust from first principles. The same explicit-scope
+    discipline every prior modality phase holds.
+
 ## [4.0.0-alpha.1] - 2026-07-31
 
 ### Added

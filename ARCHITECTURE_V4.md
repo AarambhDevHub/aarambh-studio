@@ -331,6 +331,14 @@ audio output. That capability, along with the broader question of a
 dedicated audio-generation stack, belongs to a separate project
 entirely and is intentionally out of scope here.
 
+> **Delivered in v4.0.0-alpha.2 (Phase 42).** The `aarambh-studio-audio`
+> crate, `<audio>`/`<audio_end>` tokenizer tokens, `convert --upgrade-audio-vocab`,
+> `[vision.audio]` config, `finetune audio-dora`, `infer --audio`, the
+> `audio-qa` eval task, and the full test suite are implemented. See
+> [docs/phase42_audio.md](docs/phase42_audio.md). WAV PCM decode and
+> mel-spectrogram extraction are pure-Rust from first principles (no
+> `rustfft` or audio-ML dependency); MP3/FLAC/Ogg decode is future work.
+
 ---
 
 ## 57. Sparse/Grouped MoE Dispatch

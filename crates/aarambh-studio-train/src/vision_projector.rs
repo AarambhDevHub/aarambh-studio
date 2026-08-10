@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use aarambh_studio_audio::MelSpectrogramConfig;
 use aarambh_studio_core::{AarambhError, ModelConfig, Result, TokenizerLike, TrainConfig};
 use aarambh_studio_model::AarambhModel;
 use aarambh_studio_tokenizer::{
@@ -23,7 +24,7 @@ use crate::optim::{AdamW, AdamWConfig, GradMap, clip_gradients};
 use crate::schedule::CosineScheduleWithWarmup;
 
 /// Vision training mode and data paths used by Phase 19.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct VisionTrainingConfig {
     /// Vision mode: `projector_pretrain` or `vlm_instruction`.
@@ -50,6 +51,8 @@ pub struct VisionTrainingConfig {
     pub video: Option<VideoTrainingConfig>,
     /// Optional native document understanding configuration.
     pub document: Option<DocumentTrainingConfig>,
+    /// Optional native audio understanding configuration (Phase 42).
+    pub audio: Option<AudioTrainingConfig>,
 }
 
 impl Default for VisionTrainingConfig {
@@ -67,6 +70,7 @@ impl Default for VisionTrainingConfig {
             max_samples: None,
             video: None,
             document: None,
+            audio: None,
         }
     }
 }
@@ -79,6 +83,9 @@ impl VisionTrainingConfig {
         }
         if let Some(document) = &self.document {
             document.validate()?;
+        }
+        if let Some(audio) = &self.audio {
+            audio.validate()?;
         }
         match self.mode.as_str() {
             "disabled" | "" => Ok(()),
@@ -190,6 +197,50 @@ impl DocumentTrainingConfig {
                 "vision.document target_dpi, page limits, max_page_pixels, and encoder_page_batch_size must be non-zero".into(),
             ));
         }
+        Ok(())
+    }
+}
+
+/// Native audio decoding, mel-spectrogram, and cache configuration (Phase 42).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AudioTrainingConfig {
+    /// Root directory used to resolve relative audio paths.
+    pub audio_root: PathBuf,
+    /// JSON config for the frozen audio spectrogram transformer.
+    pub encoder_config_path: PathBuf,
+    /// SafeTensors checkpoint for the frozen audio spectrogram transformer.
+    pub encoder_weights_path: PathBuf,
+    /// Mel-spectrogram extraction parameters.
+    pub mel: MelSpectrogramConfig,
+    /// Maximum number of clips passed through the audio encoder in one forward call.
+    pub encoder_batch_size: usize,
+    /// Number of detached pre-projector audio features cached in memory.
+    pub feature_cache_entries: usize,
+}
+
+impl Default for AudioTrainingConfig {
+    fn default() -> Self {
+        Self {
+            audio_root: PathBuf::from("."),
+            encoder_config_path: PathBuf::new(),
+            encoder_weights_path: PathBuf::new(),
+            mel: MelSpectrogramConfig::default(),
+            encoder_batch_size: 4,
+            feature_cache_entries: 16,
+        }
+    }
+}
+
+impl AudioTrainingConfig {
+    /// Validate audio resource bounds and mel configuration.
+    pub fn validate(&self) -> Result<()> {
+        if self.encoder_batch_size == 0 || self.feature_cache_entries == 0 {
+            return Err(AarambhError::Config(
+                "vision.audio encoder_batch_size and feature_cache_entries must be non-zero".into(),
+            ));
+        }
+        self.mel.validate()?;
         Ok(())
     }
 }

@@ -183,6 +183,7 @@ fn run_start(args: StartArgs) -> anyhow::Result<()> {
         image: args.image,
         video: None,
         document: None,
+        audio: None,
         pages: None,
         document_dpi: None,
         max_document_pages: None,

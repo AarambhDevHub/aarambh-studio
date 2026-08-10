@@ -2,15 +2,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use aarambh_studio_audio::{
+    AudioEncoderConfig, AudioPreprocessor, AudioProjector, AudioProjectorConfig, AudioQaExample,
+    FrozenAudioEncoder, interleave_audio_tokens, load_audio_qa_jsonl,
+};
 use aarambh_studio_core::{AarambhError, Device, ModelConfig, Result, TokenizerLike, TrainConfig};
 use aarambh_studio_tokenizer::{
-    BpeTokenizer, DOCUMENT, DOCUMENT_END, DOCUMENT_ID, FRAME_SEP, FRAME_SEP_ID, IMAGE, IMAGE_END,
-    IMAGE_ID, PAGE_SEP, PAGE_SEP_ID, VIDEO, VIDEO_END, VIDEO_ID,
+    AUDIO, AUDIO_END, AUDIO_ID, BpeTokenizer, DOCUMENT, DOCUMENT_END, DOCUMENT_ID, FRAME_SEP,
+    FRAME_SEP_ID, IMAGE, IMAGE_END, IMAGE_ID, PAGE_SEP, PAGE_SEP_ID, VIDEO, VIDEO_END, VIDEO_ID,
 };
 use aarambh_studio_train::optim::clip_gradients;
 use aarambh_studio_train::{
-    AdamW, AdamWConfig, CosineScheduleWithWarmup, DocumentTrainingConfig, GradMap, TrainState,
-    VideoTrainingConfig, VisionTrainingConfig, cross_entropy_loss,
+    AdamW, AdamWConfig, AudioTrainingConfig, CosineScheduleWithWarmup, DocumentTrainingConfig,
+    GradMap, TrainState, VideoTrainingConfig, VisionTrainingConfig, cross_entropy_loss,
 };
 use aarambh_studio_vision::{
     ClipVisionEncoder, DocQaExample, DocumentFeatureCache, DocumentFeatureCacheKey, DocumentSource,
@@ -78,6 +82,13 @@ pub struct VideoVlmDoraRunConfig {
 #[derive(Debug, Clone)]
 pub struct DocumentVlmDoraRunConfig {
     /// Shared VLM model, optimizer, vision, and document paths.
+    pub vlm: VlmDoraRunConfig,
+}
+
+/// Configuration for audio-language DoRA instruction tuning (Phase 42).
+#[derive(Debug, Clone)]
+pub struct AudioVlmDoraRunConfig {
+    /// Shared VLM model, optimizer, vision, and audio paths.
     pub vlm: VlmDoraRunConfig,
 }
 
@@ -1232,6 +1243,323 @@ pub fn run_document_vlm_dora_from_config(config: DocumentVlmDoraRunConfig) -> Re
         candle_device,
     )?;
     trainer.train()
+}
+
+/// Build and run an audio-language DoRA trainer (Phase 42).
+///
+/// Mirrors the two-stage frozen-encoder-plus-trainable-projector recipe v2 §25
+/// established for vision, substituting audio for image. The frozen audio
+/// spectrogram transformer encodes each clip into detached patch embeddings; a
+/// trainable projector maps them into the decoder's hidden width; the result is
+/// spliced into the token sequence at the `<audio>` placeholder. The DoRA-adapted
+/// LLM and the projector train together on the audio-QA target.
+pub fn run_audio_vlm_dora_from_config(config: AudioVlmDoraRunConfig) -> Result<()> {
+    let config = config.vlm;
+    config.lora_config.validate()?;
+    let audio_config = config.vision.audio.clone().ok_or_else(|| {
+        AarambhError::Config("audio VLM training requires a [vision.audio] config block".into())
+    })?;
+    audio_config.validate()?;
+    let candle_device = config.device.to_candle()?;
+    let tokenizer = BpeTokenizer::from_pretrained(&config.tokenizer_path)?;
+    tokenizer.validate_audio_special_tokens()?;
+    let mut model_config = config.model_config.clone();
+    model_config.vocab_size = tokenizer.vocab_size();
+    if model_config.moe.is_some() {
+        return Err(AarambhError::Config(
+            "audio VLM DoRA training currently requires a dense base model".into(),
+        ));
+    }
+
+    let base = aarambh_studio_weights::load_any_model_with_dtype(
+        &config.base_model_path,
+        &model_config,
+        &candle_device,
+        config.dtype,
+    )?;
+    let base_tensors = base.named_tensors();
+    drop(base);
+    let (model, dora_varmap) = DoraAarambhModel::from_tensors(
+        &model_config,
+        &base_tensors,
+        &config.lora_config,
+        config.qdora,
+        &candle_device,
+    )?;
+    eprintln!(
+        "audio VLM adapter params: {} / {} ({:.3}%)",
+        model.adapter_param_count(),
+        model.base_param_count(),
+        model.trainable_ratio() * 100.0
+    );
+
+    let encoder_config = AudioEncoderConfig::from_json(&audio_config.encoder_config_path)?;
+    let encoder = FrozenAudioEncoder::load_pretrained(
+        &audio_config.encoder_weights_path,
+        encoder_config.clone(),
+        &candle_device,
+        config.dtype,
+    )?;
+    let preprocess = AudioPreprocessor::new(audio_config.mel.clone())?;
+    let projector_varmap = VarMap::new();
+    let projector_vb = VarBuilder::from_varmap(&projector_varmap, config.dtype, &candle_device);
+    let projector = AudioProjector::new(
+        AudioProjectorConfig {
+            audio_d_model: encoder_config.audio_d_model,
+            llm_d_model: model_config.hidden_dim,
+            hidden_mult: config.vision.projector_hidden_mult,
+        },
+        projector_vb,
+    )?;
+    let mut projector_varmap = projector_varmap;
+    projector_varmap.load(&config.projector_path)?;
+
+    let examples = load_audio_qa_jsonl(&config.data_path, config.vision.max_samples)?;
+    let metadata = AdapterMetadata::new_with_method(
+        model_config.clone(),
+        config.lora_config.clone(),
+        Some(config.base_model_path.display().to_string()),
+        config.qdora,
+        AdapterMethod::Dora,
+    );
+    let mut dora_optimizer =
+        AdamW::from_varmap(&dora_varmap, AdamWConfig::from(&config.train_config))?;
+    if dora_optimizer.parameters().is_empty() {
+        return Err(AarambhError::Config(
+            "audio VLM DoRA target_modules produced zero trainable tensors".into(),
+        ));
+    }
+    let mut projector_optimizer = if config.train_projector {
+        Some(AdamW::from_varmap(
+            &projector_varmap,
+            AdamWConfig::from(&config.train_config),
+        )?)
+    } else {
+        None
+    };
+    let schedule = CosineScheduleWithWarmup::new(
+        config.train_config.lr,
+        config.train_config.warmup_steps,
+        config.train_config.max_steps,
+        config.train_config.min_lr_ratio,
+    );
+    let mut rng = StdRng::seed_from_u64(config.train_config.seed);
+    let mut examples = examples;
+    if config.shuffle {
+        examples.shuffle(&mut rng);
+    }
+    let output_dir = config.output_dir.clone();
+    fs::create_dir_all(&output_dir)?;
+    let mut dora_pending = GradMap::new();
+    let mut projector_pending = GradMap::new();
+    let mut step = 0usize;
+    let mut example_idx = 0usize;
+    let mut last_loss = 0.0f64;
+    while step < config.train_config.max_steps {
+        let example = &examples[example_idx % examples.len()];
+        example_idx += 1;
+        let loss = audio_example_loss(
+            &model,
+            &encoder,
+            &preprocess,
+            &projector,
+            &tokenizer,
+            &audio_config,
+            example,
+            &candle_device,
+            model_config.max_seq_len,
+        )?;
+        last_loss = loss.to_scalar::<f32>()? as f64;
+        let scaled = (loss / config.train_config.grad_accum_steps as f64)?;
+        let grads = scaled.backward()?;
+        accumulate_for_optimizer(&grads, &dora_optimizer, &mut dora_pending, "audio DoRA")?;
+        if let Some(projector_optimizer) = projector_optimizer.as_ref() {
+            accumulate_for_optimizer(
+                &grads,
+                projector_optimizer,
+                &mut projector_pending,
+                "audio projector",
+            )?;
+        }
+        if example_idx.is_multiple_of(config.train_config.grad_accum_steps) {
+            let lr = schedule.lr_at_step(step);
+            clip_gradients(&mut dora_pending, config.train_config.clip_grad_norm)?;
+            dora_optimizer.step(&dora_pending, lr)?;
+            dora_pending.clear();
+            if let Some(projector_optimizer) = projector_optimizer.as_mut() {
+                clip_gradients(&mut projector_pending, config.train_config.clip_grad_norm)?;
+                projector_optimizer.step(&projector_pending, lr)?;
+                projector_pending.clear();
+            }
+            step += 1;
+            if config.train_config.log_every_n_steps > 0
+                && step.is_multiple_of(config.train_config.log_every_n_steps)
+            {
+                println!(
+                    "audio_vlm_dora step={} loss={:.4} ppl={:.2} lr={:.6}",
+                    step,
+                    last_loss,
+                    last_loss.exp(),
+                    lr
+                );
+            }
+        }
+    }
+    save_adapter(&dora_varmap, &metadata, &output_dir)?;
+    projector_varmap.save(output_dir.join("projector.safetensors"))?;
+    let vlm_metadata = AudioVlmArtifactsMetadata {
+        format_version: 1,
+        projector_path: "projector.safetensors".into(),
+        train_projector: config.train_projector,
+        base_projector_path: config.projector_path.display().to_string(),
+        encoder_config_path: audio_config.encoder_config_path.display().to_string(),
+        encoder_weights_path: audio_config.encoder_weights_path.display().to_string(),
+        audio_root: audio_config.audio_root.display().to_string(),
+        mel: audio_config.mel.clone(),
+    };
+    let metadata_json = serde_json::to_string_pretty(&vlm_metadata)?;
+    fs::write(output_dir.join("audio_adapter_config.json"), metadata_json)?;
+    eprintln!(
+        "audio VLM DoRA training complete: {} steps, final loss {last_loss:.4}",
+        config.train_config.max_steps
+    );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn audio_example_loss(
+    model: &DoraAarambhModel,
+    encoder: &FrozenAudioEncoder,
+    preprocess: &AudioPreprocessor,
+    projector: &AudioProjector,
+    tokenizer: &BpeTokenizer,
+    audio_config: &AudioTrainingConfig,
+    example: &AudioQaExample,
+    device: &candle_core::Device,
+    max_seq_len: usize,
+) -> Result<Tensor> {
+    let audio_path = resolve_media_path(&audio_config.audio_root, &example.audio_path);
+    let spectrogram = preprocess
+        .preprocess_path(&audio_path, device)?
+        .unsqueeze(0)?;
+    let patch_tokens = encoder.forward(&spectrogram)?.detach();
+    let projected = projector.forward(&patch_tokens)?;
+    let patch_count = projected.dims()[1];
+    if patch_count == 0 || patch_count > max_seq_len {
+        return Err(AarambhError::Shape(format!(
+            "audio patch count {patch_count} is invalid for max_seq_len {max_seq_len}"
+        )));
+    }
+    let template = ChatTemplate;
+    let prefix = format!(
+        "{AUDIO}{AUDIO_END}\n{}",
+        template.prefix(&example.question, None)
+    );
+    let target = match example.thinking.as_deref() {
+        Some(thinking) => template.thinking_target(thinking, &example.answer),
+        None => template.target(&example.answer),
+    };
+    let prefix_ids = tokenizer.encode(&prefix)?;
+    if !prefix_ids.contains(&AUDIO_ID) {
+        return Err(AarambhError::Tokenizer(
+            "audio prefix did not encode the <audio> placeholder token".into(),
+        ));
+    }
+    let mut target_ids = tokenizer.encode(&target)?;
+    if target_ids.is_empty() {
+        return Err(AarambhError::Config(
+            "audio target encoded to zero tokens".into(),
+        ));
+    }
+    let max_text_tokens = max_seq_len + 1 - patch_count;
+    if prefix_ids.len() >= max_text_tokens {
+        return Err(AarambhError::Shape(format!(
+            "audio prompt has {} text tokens plus {patch_count} media tokens, exceeding max_seq_len {max_seq_len}",
+            prefix_ids.len()
+        )));
+    }
+    let keep_target = max_text_tokens - prefix_ids.len();
+    if target_ids.len() > keep_target {
+        target_ids.truncate(keep_target);
+    }
+    let target_start_idx = prefix_ids.len();
+    let text_tokens = {
+        let mut combined = prefix_ids;
+        combined.extend(target_ids);
+        combined
+    };
+    if text_tokens.len() < 2 {
+        return Err(AarambhError::Config(
+            "audio sequence must contain at least two tokens".into(),
+        ));
+    }
+    let text = Tensor::from_vec(text_tokens.clone(), (1, text_tokens.len()), device)?;
+    let text_embeddings = model.embed_tokens(&text)?.detach();
+    let fused = interleave_audio_tokens(&text_tokens, &text_embeddings, &projected, AUDIO_ID)?;
+    let logits = model.forward_embeddings_train(&fused)?;
+    let (labels, mask) = audio_labels_and_mask(&text_tokens, target_start_idx, patch_count)?;
+    let seq_len = labels.len();
+    let labels = Tensor::from_vec(labels, (1, seq_len), device)?;
+    let mask = Tensor::from_vec(mask, (1, seq_len), device)?;
+    cross_entropy_loss(&logits, &labels, &mask)
+}
+
+fn audio_labels_and_mask(
+    text_tokens: &[u32],
+    target_start_idx: usize,
+    patch_count: usize,
+) -> Result<(Vec<u32>, Vec<u32>)> {
+    let mut items = Vec::new();
+    let mut inserted = 0usize;
+    for (idx, token) in text_tokens.iter().enumerate() {
+        if *token == AUDIO_ID {
+            items.extend(std::iter::repeat_n((None, idx), patch_count));
+            inserted = 1;
+        } else {
+            items.push((Some(*token), idx));
+        }
+    }
+    if inserted != 1 {
+        return Err(AarambhError::Shape(format!(
+            "expected one expanded audio item, found {inserted}"
+        )));
+    }
+    let mut labels = Vec::with_capacity(items.len());
+    let mut mask = Vec::with_capacity(items.len());
+    for idx in 0..items.len() {
+        match items.get(idx + 1).copied() {
+            Some((Some(token), original_idx)) if original_idx >= target_start_idx => {
+                labels.push(token);
+                mask.push(1);
+            }
+            Some((Some(token), _)) => {
+                labels.push(token);
+                mask.push(0);
+            }
+            _ => {
+                labels.push(0);
+                mask.push(0);
+            }
+        }
+    }
+    if !mask.contains(&1) {
+        return Err(AarambhError::Shape(
+            "audio loss mask has no supervised answer tokens".into(),
+        ));
+    }
+    Ok((labels, mask))
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct AudioVlmArtifactsMetadata {
+    format_version: u32,
+    projector_path: String,
+    train_projector: bool,
+    base_projector_path: String,
+    encoder_config_path: String,
+    encoder_weights_path: String,
+    audio_root: String,
+    mel: aarambh_studio_audio::MelSpectrogramConfig,
 }
 
 #[derive(Debug, Clone, Serialize)]
