@@ -30,7 +30,7 @@ pub mod sparse_attention;
 
 pub use attention::GroupedQueryAttention;
 pub use block::{FeedForwardLayer, TokenMixer, TransformerBlock};
-pub use dispatch::dense_weighted_dispatch;
+pub use dispatch::{dense_weighted_dispatch, effective_dispatch_kind, sparse_grouped_dispatch};
 pub use ffn::SwiGluFfn;
 pub use gated_deltanet::{DeltaNetForm, DeltaNetState, GatedDeltaNetLayer};
 pub use kvcache::{DsaKvCache, HybridKvCache, KVCache};

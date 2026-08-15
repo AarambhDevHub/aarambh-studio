@@ -114,6 +114,10 @@ pub struct MoeConfig {
     pub fine_grained_factor: usize,
     /// Number of always-active fine-width shared experts.
     pub num_shared_experts: usize,
+    /// v4 Phase 43 dispatch strategy selecting how routed experts are
+    /// evaluated. Defaults to [`DispatchKind::DenseMasked`] for exact
+    /// backward compatibility with every existing MoE checkpoint.
+    pub dispatch: DispatchKind,
 }
 
 impl Default for MoeConfig {
@@ -126,6 +130,7 @@ impl Default for MoeConfig {
             every_n_layers: 2,
             fine_grained_factor: 1,
             num_shared_experts: 0,
+            dispatch: DispatchKind::DenseMasked,
         }
     }
 }
@@ -223,6 +228,42 @@ pub enum AttentionKind {
     GatedDeltaNet,
     /// Multi-Head Latent Attention with compressed-latent KV cache (v4 Phase 41).
     LatentMLA,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Routed-expert dispatch strategy used by a Mixture-of-Experts layer.
+///
+/// v2 Phase 22 and v3 Phase 31 shipped only [`DispatchKind::DenseMasked`]:
+/// every routed expert computes on every token, then the result is masked
+/// and weighted by the router. v4 Phase 43 introduces
+/// [`DispatchKind::Sparse`], where each token's forward pass only computes
+/// its assigned top-k experts — resolving the "documented future
+/// optimisation" carried forward unresolved since v2 §35 and v3's
+/// out-of-scope list.
+pub enum DispatchKind {
+    /// Dense masked dispatch: every routed expert runs on every token and
+    /// the router weights mask the non-selected contributions. This is the
+    /// v2/v3 behaviour, kept as the CPU fallback and correctness reference.
+    #[default]
+    DenseMasked,
+    /// Sparse grouped dispatch: tokens are grouped by router assignment
+    /// into per-expert contiguous batches and each expert's feed-forward
+    /// matmul executes only on its assigned token group. The real
+    /// throughput win lives on CUDA (grouped GEMM via cuBLAS); the CPU
+    /// path keeps [`DispatchKind::DenseMasked`] regardless of
+    /// configuration, documented plainly as "GPU only pays off."
+    Sparse,
+}
+
+impl DispatchKind {
+    /// Return the snake_case identifier used in TOML/JSON configs.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DenseMasked => "dense_masked",
+            Self::Sparse => "sparse",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1003,9 +1044,41 @@ mod tests {
         let cfg: MoeConfig = serde_json::from_str(json).unwrap();
         assert_eq!(cfg.fine_grained_factor, 1);
         assert_eq!(cfg.num_shared_experts, 0);
+        assert_eq!(cfg.dispatch, DispatchKind::DenseMasked);
         assert_eq!(cfg.routed_expert_count().unwrap(), 8);
         assert_eq!(cfg.fine_grained_expert_dim().unwrap(), 512);
         assert_eq!(cfg.active_routed_width().unwrap(), 1024);
+    }
+
+    #[test]
+    fn moe_config_dispatch_defaults_to_dense_masked() {
+        let cfg = MoeConfig::default();
+        assert_eq!(cfg.dispatch, DispatchKind::DenseMasked);
+        assert_eq!(DispatchKind::default(), DispatchKind::DenseMasked);
+    }
+
+    #[test]
+    fn moe_config_dispatch_serializes_as_snake_case() {
+        let dense = MoeConfig {
+            dispatch: DispatchKind::DenseMasked,
+            ..MoeConfig::default()
+        };
+        let json = serde_json::to_string(&dense).unwrap();
+        assert!(
+            json.contains("\"dispatch\":\"dense_masked\""),
+            "dense_masked not serialized as snake_case: {json}"
+        );
+        let sparse = MoeConfig {
+            dispatch: DispatchKind::Sparse,
+            ..MoeConfig::default()
+        };
+        let json = serde_json::to_string(&sparse).unwrap();
+        assert!(
+            json.contains("\"dispatch\":\"sparse\""),
+            "sparse not serialized as snake_case: {json}"
+        );
+        let round_trip: MoeConfig = serde_json::from_str(r#"{"dispatch":"sparse"}"#).unwrap();
+        assert_eq!(round_trip.dispatch, DispatchKind::Sparse);
     }
 
     #[test]

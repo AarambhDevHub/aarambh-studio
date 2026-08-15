@@ -1,0 +1,57 @@
+# Phase 43 — Sparse/Grouped MoE dispatch smoke config.
+#
+# A tiny MoE configured with `dispatch = "sparse"`. On CPU the effective
+# dispatch kind falls back to DenseMasked (the documented "GPU only pays off"
+# policy), so this config validates that the new `dispatch` field deserialises
+# and that a 2-step training run completes end-to-end through the fallback
+# path. The real sparse throughput win is measured on Kaggle GPU hardware
+# with configs/large_sparse_moe.toml.
+dataset_path = "data/tiny_shakespeare.txt"
+tokenizer_save_path = "checkpoints/moe_sparse_smoke/tokenizer.json"
+vocab_size = 8000
+validation_split = 0.01
+shuffle = true
+resume = false
+device = "cpu"
+dtype = "f32"
+
+[model]
+vocab_size = 8000
+hidden_dim = 128
+ffn_dim = 256
+n_layers = 2
+n_heads = 2
+n_kv_heads = 1
+max_seq_len = 64
+rope_theta = 10000.0
+norm_eps = 0.00001
+tie_embeddings = true
+
+[model.moe]
+num_experts = 4
+top_k = 2
+expert_ffn_dim = 256
+aux_loss_weight = 0.01
+every_n_layers = 2
+fine_grained_factor = 2
+num_shared_experts = 1
+dispatch = "sparse"
+
+[train]
+lr = 0.001
+batch_size = 1
+grad_accum_steps = 1
+max_epochs = 1
+max_steps = 2
+warmup_steps = 0
+min_lr_ratio = 1.0
+weight_decay = 0.0
+beta1 = 0.9
+beta2 = 0.95
+epsilon = 0.00000001
+clip_grad_norm = 1.0
+save_every_n_steps = 0
+log_every_n_steps = 1
+eval_steps = 0
+seed = 42
+checkpoint_dir = "checkpoints/moe_sparse_smoke"

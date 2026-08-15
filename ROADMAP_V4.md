@@ -442,7 +442,7 @@ expert computing on every token and being masked afterward.
 
 **`aarambh-studio-nn`:**
 ```
-[ ] src/dispatch.rs (extended)
+[x] src/dispatch.rs (extended)
       Token-to-expert grouping: sort/group tokens by router assignment
       into per-expert contiguous batches (gather)
       Per-expert matmul executes only on its assigned token group —
@@ -450,7 +450,7 @@ expert computing on every token and being masked afterward.
       Scatter results back into original token order
       DispatchKind enum: DenseMasked (v2/v3 behaviour, kept as the CPU
       fallback and as a correctness reference) | Sparse (new)
-[ ] CUDA grouped-GEMM path for the Sparse dispatch kind — this is
+[x] CUDA grouped-GEMM path for the Sparse dispatch kind — this is
     where the real throughput win lives; the CPU path continues to use
     DenseMasked regardless of configuration, documented plainly as "GPU
     only pays off," not silently downgraded
@@ -458,13 +458,13 @@ expert computing on every token and being masked afterward.
 
 **`aarambh-studio-model`:**
 ```
-[ ] MoeConfig gains `dispatch: DispatchKind`, default DenseMasked for
+[x] MoeConfig gains `dispatch: DispatchKind`, default DenseMasked for
     exact backward compatibility with every existing MoE checkpoint
 ```
 
 **`aarambh-studio-train`:**
 ```
-[ ] Load-balancing auxiliary loss unchanged — Sparse dispatch changes
+[x] Load-balancing auxiliary loss unchanged — Sparse dispatch changes
     compute path only, not the loss the router is trained against
 ```
 
@@ -474,19 +474,25 @@ expert computing on every token and being masked afterward.
 fn sparse_dispatch_output_matches_dense_masked_reference_within_tolerance() {
     // Correctness first, exactly like v2 §26 shipped DenseMasked first
     // — Sparse must reproduce the same numbers, just faster.
+    // ✓ Implemented in aarambh-studio-nn/src/dispatch.rs (max abs diff < 1e-5).
 }
 
 #[test]
-fn dispatch_kind_dense_masked_is_bit_identical_to_v2_v3_behaviour() {}
+fn dispatch_kind_dense_masked_is_bit_identical_to_v2_v3_behaviour() {
+    // ✓ Implemented in aarambh-studio-nn/src/moe.rs (diff == 0.0).
+}
 
 #[test]
 fn sparse_dispatch_cuda_throughput_exceeds_dense_masked_at_kaggle_gpu_scale() {
     // Wall-clock, not a correctness gate — same honesty discipline
     // v2 §29 used for speculative decoding's speed claim.
+    // ✓ Implemented in aarambh-studio-nn/src/moe.rs (skips on CPU, runs on CUDA).
 }
 
 #[test]
-fn load_balancing_loss_value_is_unaffected_by_dispatch_kind() {}
+fn load_balancing_loss_value_is_unaffected_by_dispatch_kind() {
+    // ✓ Implemented in aarambh-studio-nn/src/moe.rs.
+}
 ```
 
 ### Milestone

@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
-use aarambh_studio_core::MoeConfig;
+use aarambh_studio_core::{DispatchKind, MoeConfig};
 use aarambh_studio_quant::QatLinear;
 use candle_core::{D, DType, Result, Tensor};
 
+use crate::dispatch::{effective_dispatch_kind, sparse_grouped_dispatch};
 use crate::ffn::SwiGluFfn;
 
 #[derive(Debug)]
@@ -249,6 +250,15 @@ impl MoeFfn {
         &self.config
     }
 
+    /// Return the configured routed-expert dispatch strategy (v4 Phase 43).
+    ///
+    /// Note that the *effective* dispatch kind may differ at runtime — see
+    /// [`effective_dispatch_kind`], which falls back to
+    /// [`DispatchKind::DenseMasked`] on non-CUDA devices.
+    pub fn dispatch_kind(&self) -> DispatchKind {
+        self.config.dispatch
+    }
+
     fn forward_inner(
         &self,
         x: &Tensor,
@@ -294,34 +304,47 @@ impl MoeFfn {
             )?;
         }
 
-        let mut routed_output = None;
-        for (expert_idx, expert) in self.experts.iter().enumerate() {
-            let expert_output = if capture.is_empty() {
-                if train {
-                    expert.forward_train(x)?
+        // Phase 43: select the routed-expert dispatch path. Sparse grouped
+        // dispatch only activates on CUDA (see `effective_dispatch_kind`);
+        // the CPU path keeps DenseMasked regardless of configuration,
+        // documented plainly as "GPU only pays off." Calibration capture
+        // always uses the dense reference so QAT observes full per-expert
+        // activation distributions. The load-balancing auxiliary loss above
+        // is computed in `top_k_gating` before dispatch, so it is identical
+        // for both kinds — Sparse changes the compute path only.
+        let effective = effective_dispatch_kind(self.config.dispatch, x.device());
+        let use_dense = effective == DispatchKind::DenseMasked || !capture.is_empty();
+        let mut output = if use_dense {
+            let mut routed_output = None;
+            for (expert_idx, expert) in self.experts.iter().enumerate() {
+                let expert_output = if capture.is_empty() {
+                    if train {
+                        expert.forward_train(x)?
+                    } else {
+                        expert.forward(x)?
+                    }
                 } else {
-                    expert.forward(x)?
-                }
-            } else {
-                forward_expert_with_capture(
-                    expert,
-                    x,
-                    &format!("blocks.{layer_idx}.ffn.experts.{expert_idx}"),
-                    capture,
-                )?
-            };
-            let weight = gating
-                .dispatch_weights
-                .narrow(D::Minus1, expert_idx, 1)?
-                .to_dtype(expert_output.dtype())?;
-            let weighted = expert_output.broadcast_mul(&weight)?;
-            routed_output = Some(match routed_output {
-                Some(accumulator) => (accumulator + weighted)?,
-                None => weighted,
-            });
-        }
-        let mut output =
-            routed_output.ok_or_else(|| candle_core::Error::msg("MoE has no experts"))?;
+                    forward_expert_with_capture(
+                        expert,
+                        x,
+                        &format!("blocks.{layer_idx}.ffn.experts.{expert_idx}"),
+                        capture,
+                    )?
+                };
+                let weight = gating
+                    .dispatch_weights
+                    .narrow(D::Minus1, expert_idx, 1)?
+                    .to_dtype(expert_output.dtype())?;
+                let weighted = expert_output.broadcast_mul(&weight)?;
+                routed_output = Some(match routed_output {
+                    Some(accumulator) => (accumulator + weighted)?,
+                    None => weighted,
+                });
+            }
+            routed_output.ok_or_else(|| candle_core::Error::msg("MoE has no experts"))?
+        } else {
+            sparse_grouped_dispatch(x, &self.experts, &gating.indices, &gating.weights, train)?
+        };
         if !self.shared_experts.experts().is_empty() {
             let shared = if capture.is_empty() {
                 if train {
@@ -426,6 +449,7 @@ pub fn load_balancing_loss_from_stats(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dense_weighted_dispatch;
     use candle_core::{DType, Device};
     use candle_nn::{Init, VarBuilder, VarMap, linear_no_bias};
 
@@ -648,6 +672,295 @@ mod tests {
             gradients
                 .get(variables["shared_experts.0.w_down.weight"].as_tensor())
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn dispatch_kind_dense_masked_is_bit_identical_to_v2_v3_behaviour() {
+        // The default (DenseMasked) MoeFfn must reproduce the v2/v3 dense
+        // formula exactly: every expert on every token, masked by the router
+        // dispatch weights, plus shared experts. Compared against the
+        // standalone `dense_weighted_dispatch` reference utility.
+        let device = Device::Cpu;
+        let varmap = VarMap::new();
+        let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device);
+        let config = MoeConfig {
+            num_experts: 2,
+            top_k: 1,
+            expert_ffn_dim: 8,
+            every_n_layers: 1,
+            num_shared_experts: 1,
+            ..MoeConfig::default()
+        };
+        assert_eq!(config.dispatch, DispatchKind::DenseMasked);
+        let experts = vec![
+            test_expert(vb.pp("experts").pp(0), 8, 8),
+            test_expert(vb.pp("experts").pp(1), 8, 8),
+        ];
+        let shared = SharedExpertPath::new(vec![test_expert(vb.pp("shared_experts").pp(0), 8, 8)]);
+        let moe = MoeFfn::new_with_shared(
+            config,
+            linear_no_bias(8, 2, vb.pp("router")).unwrap(),
+            experts,
+            shared,
+        );
+        let x = vb
+            .get_with_hints(
+                (2, 3, 8),
+                "x",
+                Init::Randn {
+                    mean: 0.0,
+                    stdev: 0.1,
+                },
+            )
+            .unwrap();
+
+        let moe_output = moe.forward(&x).unwrap();
+        // Reference: dense masked dispatch of the routed experts + shared.
+        let logits = moe.router.forward(&x).unwrap();
+        let gating = top_k_gating(&logits, 1).unwrap();
+        let expert_outputs = moe
+            .experts
+            .iter()
+            .map(|expert| expert.forward(&x).unwrap())
+            .collect::<Vec<_>>();
+        let routed_ref =
+            dense_weighted_dispatch(&expert_outputs, &gating.dispatch_weights).unwrap();
+        let shared_ref = moe.shared_experts.forward(&x).unwrap();
+        let reference = (routed_ref + shared_ref).unwrap();
+        let diff = ((moe_output - reference)
+            .unwrap()
+            .abs()
+            .unwrap()
+            .max_all()
+            .unwrap())
+        .to_scalar::<f32>()
+        .unwrap();
+        assert!(
+            diff == 0.0,
+            "DenseMasked output drifted from v2/v3 by {diff}"
+        );
+    }
+
+    #[test]
+    fn load_balancing_loss_value_is_unaffected_by_dispatch_kind() {
+        // The auxiliary loss is computed in `top_k_gating` before dispatch,
+        // so it must be identical regardless of the configured dispatch kind.
+        let device = Device::Cpu;
+        let varmap = VarMap::new();
+        let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device);
+        let base = MoeConfig {
+            num_experts: 3,
+            top_k: 2,
+            expert_ffn_dim: 8,
+            every_n_layers: 1,
+            ..MoeConfig::default()
+        };
+        let dense_config = MoeConfig {
+            dispatch: DispatchKind::DenseMasked,
+            ..base.clone()
+        };
+        let sparse_config = MoeConfig {
+            dispatch: DispatchKind::Sparse,
+            ..base
+        };
+        let build = |config: MoeConfig| {
+            MoeFfn::new_with_shared(
+                config,
+                linear_no_bias(8, 3, vb.pp("router")).unwrap(),
+                (0..3)
+                    .map(|idx| test_expert(vb.pp("experts").pp(idx), 8, 8))
+                    .collect::<Vec<_>>(),
+                SharedExpertPath::empty(),
+            )
+        };
+        let dense_moe = build(dense_config);
+        let sparse_moe = build(sparse_config);
+        let x = vb
+            .get_with_hints(
+                (2, 4, 8),
+                "x",
+                Init::Randn {
+                    mean: 0.0,
+                    stdev: 0.1,
+                },
+            )
+            .unwrap();
+        let mut dense_stats = MoeForwardStats::default();
+        let mut sparse_stats = MoeForwardStats::default();
+        dense_moe.forward_train(&x, Some(&mut dense_stats)).unwrap();
+        sparse_moe
+            .forward_train(&x, Some(&mut sparse_stats))
+            .unwrap();
+        let dense_aux = dense_stats.aux_loss().unwrap().unwrap();
+        let sparse_aux = sparse_stats.aux_loss().unwrap().unwrap();
+        let aux_diff = ((dense_aux - sparse_aux)
+            .unwrap()
+            .abs()
+            .unwrap()
+            .max_all()
+            .unwrap())
+        .to_scalar::<f32>()
+        .unwrap();
+        assert!(
+            aux_diff < 1e-6,
+            "aux loss changed with dispatch kind: {aux_diff}"
+        );
+        assert_eq!(
+            dense_stats.expert_utilization(),
+            sparse_stats.expert_utilization()
+        );
+    }
+
+    #[test]
+    fn sparse_configured_moe_falls_back_to_dense_masked_on_cpu() {
+        // On CPU, a Sparse-configured MoeFfn must run the DenseMasked path
+        // (the documented "GPU only pays off" policy) and still produce
+        // output equivalent to a DenseMasked-configured MoeFfn.
+        let device = Device::Cpu;
+        let varmap = VarMap::new();
+        let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device);
+        let base = MoeConfig {
+            num_experts: 2,
+            top_k: 1,
+            expert_ffn_dim: 8,
+            every_n_layers: 1,
+            ..MoeConfig::default()
+        };
+        let build = |dispatch| {
+            MoeFfn::new_with_shared(
+                MoeConfig {
+                    dispatch,
+                    ..base.clone()
+                },
+                linear_no_bias(8, 2, vb.pp("router")).unwrap(),
+                vec![
+                    test_expert(vb.pp("experts").pp(0), 8, 8),
+                    test_expert(vb.pp("experts").pp(1), 8, 8),
+                ],
+                SharedExpertPath::empty(),
+            )
+        };
+        let dense_moe = build(DispatchKind::DenseMasked);
+        let sparse_moe = build(DispatchKind::Sparse);
+        assert_eq!(sparse_moe.dispatch_kind(), DispatchKind::Sparse);
+        assert_eq!(
+            effective_dispatch_kind(sparse_moe.dispatch_kind(), &Device::Cpu),
+            DispatchKind::DenseMasked
+        );
+        let x = vb
+            .get_with_hints(
+                (2, 3, 8),
+                "x",
+                Init::Randn {
+                    mean: 0.0,
+                    stdev: 0.1,
+                },
+            )
+            .unwrap();
+        let dense_out = dense_moe.forward(&x).unwrap();
+        let sparse_out = sparse_moe.forward(&x).unwrap();
+        let diff = ((dense_out - sparse_out)
+            .unwrap()
+            .abs()
+            .unwrap()
+            .max_all()
+            .unwrap())
+        .to_scalar::<f32>()
+        .unwrap();
+        assert!(
+            diff == 0.0,
+            "CPU Sparse fallback drifted from DenseMasked by {diff}"
+        );
+    }
+
+    #[test]
+    fn effective_dispatch_kind_uses_sparse_on_cuda() {
+        // Wall-clock throughput is a CUDA-only claim. Skip honestly on CPU,
+        // mirroring v2 §29's speculative-decoding speed-claim discipline.
+        let device = Device::cuda_if_available(0).unwrap();
+        if !device.is_cuda() {
+            return;
+        }
+        assert_eq!(
+            effective_dispatch_kind(DispatchKind::Sparse, &device),
+            DispatchKind::Sparse
+        );
+        assert_eq!(
+            effective_dispatch_kind(DispatchKind::DenseMasked, &device),
+            DispatchKind::DenseMasked
+        );
+    }
+
+    #[test]
+    fn sparse_dispatch_cuda_throughput_exceeds_dense_masked_at_kaggle_gpu_scale() {
+        // Wall-clock, not a correctness gate — same honesty discipline v2 §29
+        // used for speculative decoding's speed claim. Skipped on CPU.
+        let device = Device::cuda_if_available(0).unwrap();
+        if !device.is_cuda() {
+            return;
+        }
+        let varmap = VarMap::new();
+        let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device);
+        let num_experts = 16;
+        let top_k = 2;
+        let hidden = 256;
+        let intermediate = 256;
+        let base = MoeConfig {
+            num_experts,
+            top_k,
+            expert_ffn_dim: intermediate,
+            every_n_layers: 1,
+            ..MoeConfig::default()
+        };
+        let build = |dispatch| {
+            MoeFfn::new_with_shared(
+                MoeConfig {
+                    dispatch,
+                    ..base.clone()
+                },
+                linear_no_bias(hidden, num_experts, vb.pp("router")).unwrap(),
+                (0..num_experts)
+                    .map(|idx| test_expert(vb.pp("experts").pp(idx), hidden, intermediate))
+                    .collect::<Vec<_>>(),
+                SharedExpertPath::empty(),
+            )
+        };
+        let dense_moe = build(DispatchKind::DenseMasked);
+        let sparse_moe = build(DispatchKind::Sparse);
+        let x = vb
+            .get_with_hints(
+                (4, 128, hidden),
+                "x",
+                Init::Randn {
+                    mean: 0.0,
+                    stdev: 0.1,
+                },
+            )
+            .unwrap();
+
+        // Warm up both paths so the first kernel compile does not skew timing.
+        for _ in 0..3 {
+            dense_moe.forward(&x).unwrap();
+            sparse_moe.forward(&x).unwrap();
+        }
+
+        let iterations = 20;
+        let dense_start = std::time::Instant::now();
+        for _ in 0..iterations {
+            dense_moe.forward(&x).unwrap();
+        }
+        let dense_elapsed = dense_start.elapsed();
+
+        let sparse_start = std::time::Instant::now();
+        for _ in 0..iterations {
+            sparse_moe.forward(&x).unwrap();
+        }
+        let sparse_elapsed = sparse_start.elapsed();
+
+        assert!(
+            sparse_elapsed < dense_elapsed,
+            "sparse dispatch ({sparse_elapsed:?}) was not faster than dense masked ({dense_elapsed:?}) at Kaggle GPU scale"
         );
     }
 }

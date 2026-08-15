@@ -980,6 +980,7 @@ mod tests {
                 every_n_layers: 2,
                 fine_grained_factor: 2,
                 num_shared_experts: 1,
+                ..MoeConfig::default()
             }),
             attention_schedule: None,
             dsa_config: None,

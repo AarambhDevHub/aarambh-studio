@@ -150,6 +150,13 @@ to a fourth modality.
 
 ## 44. Self-Learning With Sparse MoE Dispatch
 
+> **Status: Shipped for v4.0.0-alpha.3 (Phase 43).** The
+> `DispatchKind` enum and `sparse_grouped_dispatch` are implemented
+> (`aarambh-studio-core`, `aarambh-studio-nn`); the aux-loss-
+> dispatch-independence invariant this section relies on is verified by
+> the `load_balancing_loss_value_is_unaffected_by_dispatch_kind` unit
+> test. See `docs/phase43_sparse_moe.md`.
+
 `ARCHITECTURE_V4.md` §57 established that `DispatchKind` only changes
 the *compute path* of an MoE forward pass, never the router's training
 objective. This holds for the self-learning loop as well: an online
