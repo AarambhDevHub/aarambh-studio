@@ -343,7 +343,7 @@ entirely and is intentionally out of scope here.
 
 ## 57. Sparse/Grouped MoE Dispatch
 
-**Crate:** `aarambh-studio-nn` (`dispatch.rs`, extended) | **Depends on:** v2 §26 (MoE), v3 §40 (fine-grained MoE)
+**Crate:** `aarambh-studio-nn` (`dispatch.rs`, extended) + `aarambh-studio-core` (`DispatchKind`) | **Depends on:** v2 §26 (MoE), v3 §40 (fine-grained MoE) | **Status:** shipped in v4.0.0-alpha.3 (Phase 43)
 
 ### The Deferred Optimisation, Resolved
 
@@ -403,6 +403,40 @@ throughput is even discussed. The throughput claim itself is a
 wall-clock measurement at Kaggle GPU scale, reported honestly, the same
 discipline v2 §29 (speculative decoding) and every MoE-related claim
 since have followed.
+
+### Phase 43 Implementation
+
+The shipped `sparse_grouped_dispatch` (`aarambh-studio-nn/src/dispatch.rs`)
+is fully candle-native and differentiable, using no custom kernel:
+
+```
+flatten tokens → [N, H]; flatten assignments → [N*top_k]
+arg_sort by expert id (no-grad permutation) → grouped order
+gather token-ids + weights into grouped order (gather is differentiable)
+per-expert boundaries scanned on host (O(N*top_k))
+for each expert e with count_e > 0:
+    index_select e's token group → [count_e, H]   (differentiable)
+    expert.forward(group)                         (matmul on group ONLY)
+    mul group_weights                             (differentiable)
+    index_add scatter back into [N, H]            (differentiable)
+reshape → [batch, seq, H]
+```
+
+The grouping permutation is a discrete index (no gradient), computed with
+`arg_sort_last_dim` (a no-grad op); every value that flows into the loss
+remains differentiable through candle's `gather`/`index_select`/`index_add`.
+On CUDA, candle routes these ops plus the per-expert `matmul` to cuBLAS —
+a genuine grouped-GEMM path that skips non-routed experts. A fused
+single-kernel grouped-GEMM `.cu` file remains a documented future
+optimisation; the current path already realises the throughput win without
+it, and is verifiable on CPU for correctness.
+
+`effective_dispatch_kind(configured, device)` selects `Sparse` only on a
+CUDA device; CPU falls back to `DenseMasked` regardless of configuration
+(the "GPU only pays off" policy). `MoeFfn::dispatch_kind()` exposes the
+configured kind. QAT calibration (`forward_with_capture`) always uses the
+dense reference to observe full per-expert activation distributions. See
+`docs/phase43_sparse_moe.md` for the full test matrix and configs.
 
 ---
 

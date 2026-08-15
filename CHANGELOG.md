@@ -2,6 +2,66 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0-alpha.3] - 2026-08-15
+
+### Added
+
+- **Phase 43 — Sparse/Grouped MoE Dispatch:** Resolves the "documented
+  future optimisation" carried forward unresolved since v2 §35 and v3's
+  out-of-scope list. Each token's forward pass now computes only its
+  assigned top-k experts, rather than every expert computing on every
+  token and being masked afterward — the dense-masked-matmul trade-off v2
+  Phase 22 and v3 Phase 31 deliberately shipped. The output is numerically
+  equivalent to DenseMasked (same tokens, same weights, same per-expert
+  reduction order), just faster, because the masked-away matmuls never run.
+  - New `DispatchKind` enum (`aarambh-studio-core`, alongside `AttentionKind`):
+    `DenseMasked` (v2/v3 behaviour, default, CPU fallback, correctness
+    reference) | `Sparse` (new). Serialized as `dense_masked` / `sparse`.
+  - `MoeConfig` gains a `dispatch: DispatchKind` field defaulting to
+    `DenseMasked` for exact backward compatibility with every existing MoE
+    checkpoint — old TOML/JSON without the field deserialises to the dense
+    path, byte-identical to v2/v3.
+  - `sparse_grouped_dispatch` (`aarambh-studio-nn/src/dispatch.rs`): tokens
+    are grouped by router assignment into per-expert contiguous batches via
+    `arg_sort` (no-grad permutation), then each expert's SwiGLU matmul
+    executes only on its assigned token group via `index_select` →
+    `expert.forward` → `index_add` scatter. Fully differentiable through
+    candle's `gather`/`index_select`/`index_add` ops — router logits, expert
+    parameters, and input activations all receive correct gradients.
+  - `effective_dispatch_kind`: `Sparse` only activates on a CUDA device; the
+    CPU path keeps `DenseMasked` regardless of configuration, documented
+    plainly as "GPU only pays off" (the honesty discipline v2 §29 applied to
+    speculative decoding's speed claim). The real throughput win lives on
+    CUDA, where candle routes the per-expert gather/matmul/scatter to cuBLAS
+    — a genuine grouped-GEMM path that skips non-routed experts.
+  - `MoeFfn::dispatch_kind()` exposes the configured kind; the forward path
+    selects dense vs sparse by the effective kind. QAT calibration
+    (`forward_with_capture`) always uses the dense reference to observe full
+    per-expert activation distributions.
+  - Load-balancing auxiliary loss unchanged — computed in `top_k_gating`
+    before dispatch, so identical for both kinds. Sparse changes the compute
+    path only, not the loss the router is trained against.
+  - New configs: `configs/moe_sparse_smoke.toml` (CPU smoke, dense fallback),
+    `configs/large_sparse_moe.toml` (Kaggle GPU, the throughput win); new
+    script `scripts/phase43_smoke.sh`; new doc `docs/phase43_sparse_moe.md`.
+  - Tests: `sparse_dispatch_output_matches_dense_masked_reference_within_tolerance`
+    (max abs diff < 1e-5), `dispatch_kind_dense_masked_is_bit_identical_to_v2_v3_behaviour`
+    (diff == 0.0), `sparse_dispatch_supports_top_k_greater_than_one`,
+    `sparse_dispatch_backward_reaches_router_and_expert_weights`,
+    `sparse_dispatch_empty_expert_group_is_skipped`,
+    `sparse_dispatch_matches_dense_with_shared_expert_summed_separately`,
+    `load_balancing_loss_value_is_unaffected_by_dispatch_kind`,
+    `sparse_configured_moe_falls_back_to_dense_masked_on_cpu`,
+    `effective_dispatch_kind_uses_sparse_on_cuda` (CUDA-gated),
+    `sparse_dispatch_cuda_throughput_exceeds_dense_masked_at_kaggle_gpu_scale`
+    (wall-clock, CUDA-gated, skips on CPU), `moe_config_dispatch_defaults_to_dense_masked`,
+    `moe_config_dispatch_serializes_as_snake_case`.
+
+### Changed
+
+- Workspace version bumped `4.0.0-alpha.2` → `4.0.0-alpha.3` (matches the
+  Phase 43 milestone tag `v4.0.0-alpha.3`).
+
 ## [4.0.0-alpha.2] - 2026-08-09
 
 ### Added

@@ -18,11 +18,14 @@ with hybrid Gated DeltaNet, DeepSeek Sparse Attention,
 fine-grained MoE with shared experts, Multi-Token Prediction (MTP), on-policy
 distillation, native quantization-aware training, native video/document input,
 bounded long-horizon tool-use chains, persistent forgetting diagnostics, and
-Max thinking mode (16,384-token budget). **v4.0.0-alpha.2** continues the v4 arc
-with Multi-Head Latent Attention (Phase 41) and a native Audio modality
-(Phase 42) — a frozen audio spectrogram transformer plus trainable projector
-that lets the model hear and reason about audio clips, the same
-frozen-encoder-plus-projector recipe vision, video, and documents use.
+Max thinking mode (16,384-token budget). **v4.0.0-alpha.3** continues the v4 arc
+with Multi-Head Latent Attention (Phase 41), a native Audio modality
+(Phase 42), and sparse/grouped MoE dispatch (Phase 43) — a frozen audio
+spectrogram transformer plus trainable projector that lets the model hear and
+reason about audio clips (the same frozen-encoder-plus-projector recipe vision,
+video, and documents use), and real sparse expert dispatch where each token
+computes only its assigned top-k experts rather than every expert on every
+token then masked (numerically equivalent to the dense path, faster on CUDA).
 
 > [!IMPORTANT]
 > This is a source and engineering project. It does not publish crates to
@@ -34,7 +37,7 @@ frozen-encoder-plus-projector recipe vision, video, and documents use.
 | Area | Capabilities |
 |---|---|
 | Model | RMSNorm, RoPE, GQA, SwiGLU, KV cache, tied embeddings, Tiny to Large configs |
-| Efficient architecture | YaRN/NTK/linear RoPE scaling, Gated DeltaNet, learned block-sparse DSA, Multi-Head Latent Attention (MLA), fine-grained MoE, MTP |
+| Efficient architecture | YaRN/NTK/linear RoPE scaling, Gated DeltaNet, learned block-sparse DSA, Multi-Head Latent Attention (MLA), fine-grained MoE, sparse/grouped MoE dispatch, MTP |
 | Training | BPE data pipeline, AdamW, cosine schedule, gradient accumulation/clipping, checkpoint resume, BF16 CUDA, single-node multi-GPU, on-policy distillation, native INT4/INT8 QAT |
 | Fine-tuning | SFT, LoRA, QLoRA, DoRA, QDoRA, VLM adapters, GRPO, DPO, QDPO, tool-call tuning |
 | Inference | Greedy/sampled decoding, streaming, thinking budgets, external or one-checkpoint MTP speculation, tool grammar, caller-executed chains |
@@ -126,6 +129,7 @@ See the phase-specific docs for full walkthroughs with smoke fixtures:
 | OpenAI-compatible server | [docs/inference-server.md](docs/inference-server.md) |
 | Evaluation & forgetting diagnostics | [docs/phase38_forgetting.md](docs/phase38_forgetting.md) |
 | Multi-Head Latent Attention (MLA) | [docs/phase41_mla.md](docs/phase41_mla.md) |
+| Sparse/grouped MoE dispatch | [docs/phase43_sparse_moe.md](docs/phase43_sparse_moe.md) |
 | Quantization (GPTQ, QAT, GGUF) | [docs/phase34_qat.md](docs/phase34_qat.md) |
 | MLA hybrid attention & KV-cache report | `aarambh-studio eval --kv-cache-report` + [docs/phase41_mla.md](docs/phase41_mla.md) |
 | Fine-tuning (SFT, adapters, GRPO, DPO) | `aarambh-studio finetune --help` |

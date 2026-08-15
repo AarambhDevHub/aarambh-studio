@@ -1,0 +1,94 @@
+# Phase 43 — Sparse/Grouped MoE dispatch, Kaggle GPU config.
+#
+# Mirrors configs/large_finegrained_moe.toml with `dispatch = "sparse"` so the
+# routed-expert feed-forward matmuls execute only on each token's assigned
+# top-k expert groups via candle's CUDA backend (cuBLAS grouped GEMM). On a
+# Kaggle T4/A100 this is where the Phase 43 throughput win lives — the CPU
+# path keeps DenseMasked regardless of this setting (see
+# `effective_dispatch_kind`). Sparse dispatch is numerically equivalent to
+# DenseMasked (verified by the Phase 43 unit-test suite), so this config
+# produces the same model quality as the fine-grained baseline, just faster.
+#
+# Run on Kaggle:
+#   aarambh-studio train --config configs/large_sparse_moe.toml
+dataset_path = "data/wikitext-103-raw/wiki.train.raw"
+tokenizer_path = "checkpoints/wikitext103_large/tokenizer.json"
+vocab_size = 32000
+validation_split = 0.01
+shuffle = true
+resume = false
+retrofit_from = "checkpoints/wikitext103_large_coarse_moe/best/model.safetensors"
+retrofit_lr_scale = 0.1
+device = "cuda:0"
+dtype = "bf16"
+
+[model]
+vocab_size = 32000
+hidden_dim = 2048
+ffn_dim = 6656
+n_layers = 24
+n_heads = 32
+n_kv_heads = 8
+max_seq_len = 32768
+rope_theta = 500000.0
+norm_eps = 0.00001
+tie_embeddings = true
+
+[model.rope_scaling]
+method = "yarn"
+factor = 8.0
+original_max_seq_len = 4096
+beta_fast = 32.0
+beta_slow = 1.0
+attention_factor = 1.0
+
+[model.attention_schedule]
+full_attention_every_n = 4
+
+[model.attention_schedule.gated_deltanet]
+n_heads = 16
+key_head_dim = 96
+value_head_dim = 192
+conv_kernel_size = 4
+chunk_size = 64
+
+[model.dsa_config]
+block_size = 64
+top_k_blocks = 16
+min_seq_len_for_sparsity = 2048
+
+[model.moe]
+num_experts = 8
+top_k = 8
+expert_ffn_dim = 3328
+aux_loss_weight = 0.01
+every_n_layers = 2
+fine_grained_factor = 4
+num_shared_experts = 1
+dispatch = "sparse"
+
+[dsa_training]
+teacher_every_n_steps = 8
+indexer_loss_weight = 1.0
+
+[moe_retrofit]
+source_top_k = 2
+
+[train]
+lr = 0.00015
+batch_size = 1
+grad_accum_steps = 32
+max_epochs = 1
+max_steps = 40000
+warmup_steps = 1500
+min_lr_ratio = 0.1
+weight_decay = 0.1
+beta1 = 0.9
+beta2 = 0.95
+epsilon = 0.00000001
+clip_grad_norm = 1.0
+save_every_n_steps = 2500
+log_every_n_steps = 10
+eval_steps = 500
+seed = 42
+checkpoint_dir = "checkpoints/wikitext103_large_sparse_moe"

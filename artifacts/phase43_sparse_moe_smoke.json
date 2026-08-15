@@ -1,0 +1,11 @@
+{
+  "phase": 43,
+  "title": "Sparse/Grouped MoE Dispatch",
+  "dispatch_configured": "sparse",
+  "dispatch_effective_cpu": "dense_masked",
+  "checkpoint": "checkpoints/moe_sparse_smoke/step_000002/model.safetensors",
+  "tensor_count": 45,
+  "routed_expert_down_weights": 8,
+  "shared_expert_down_weights": 1,
+  "aux_loss_unchanged": true
+}

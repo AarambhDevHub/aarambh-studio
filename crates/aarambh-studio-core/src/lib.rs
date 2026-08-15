@@ -18,8 +18,8 @@ pub use config::RopeScalingConfig;
 pub use config::RopeScalingMethod;
 pub use config::TrainConfig;
 pub use config::{
-    AttentionKind, DsaConfig, GatedDeltaNetConfig, HybridAttentionSchedule, MlaConfig, MtpConfig,
-    QatConfig, QatTarget, QuantBits, QuantGranularity,
+    AttentionKind, DispatchKind, DsaConfig, GatedDeltaNetConfig, HybridAttentionSchedule,
+    MlaConfig, MtpConfig, QatConfig, QatTarget, QuantBits, QuantGranularity,
 };
 pub use device::Device;
 pub use dtype::DType;

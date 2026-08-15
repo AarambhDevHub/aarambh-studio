@@ -57,6 +57,7 @@ fn fine_moe_mini_config() -> ModelConfig {
             every_n_layers: 2,
             fine_grained_factor: 2,
             num_shared_experts: 1,
+            ..MoeConfig::default()
         }),
         ..mini_config()
     }
