@@ -25,8 +25,9 @@
 //!
 //! Candidate generation reuses the self-learning loop's N-completion
 //! sampling *pattern* (sample N candidates with seeds `base + i`): see
-//! [`CandidateSampler`], implemented for
-//! [`aarambh_studio_inference::InferenceEngine`]. RLAIF is offline-only
+//! [`CandidateSampler`], implemented for `InferenceEngine` (the
+//! `aarambh-studio-inference` crate — the impl lives in the CLI binary,
+//! not here, to preserve the Layer 4/5 boundary). RLAIF is offline-only
 //! and does not couple to the online self-learning loop — it shares the
 //! *pattern*, not a dependency.
 //!
