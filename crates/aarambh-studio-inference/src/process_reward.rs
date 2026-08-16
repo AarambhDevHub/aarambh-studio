@@ -9,7 +9,7 @@
 //! head with a transparent, dependency-free scoring function; a future
 //! trained-head integration is represented by [`ProcessRewardHead`] which
 //! returns [`AarambhError::Unsupported`](aarambh_studio_core::AarambhError)
-//! until a checkpoint exists, rather than shipping a `todo!()` stub.
+//! until a checkpoint exists, rather than shipping a panic-stub macro.
 
 use aarambh_studio_core::{AarambhError, Result};
 use aarambh_studio_tokenizer::{THINK_END, THINK_START};
@@ -96,7 +96,7 @@ impl ProcessRewardScorer for HeuristicProcessRewardScorer {
 /// implementation returns
 /// [`AarambhError::Unsupported`](aarambh_studio_core::AarambhError) to make
 /// the not-yet-trained status explicit at the call site rather than
-/// silently degrading to a zero score or panicking with `todo!()`.
+/// silently degrading to a zero score or panicking with a stub macro.
 #[derive(Debug, Clone, Default)]
 pub struct ProcessRewardHead {
     checkpoint_path: Option<std::path::PathBuf>,

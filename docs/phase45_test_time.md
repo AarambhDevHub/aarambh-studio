@@ -145,7 +145,7 @@ non-trivial step count). A `ProcessRewardHead` placeholder is documented
 as "loadable trained head — not yet trained; returns
 `AarambhError::Unsupported` until a checkpoint exists", so the not-yet-
 trained status is explicit at the call site rather than silently degrading
-or panicking with `todo!()`. No trained checkpoint ships (the release audit
+or panicking with a stub macro. No trained checkpoint ships (the release audit
 forbids tracked model artifacts).
 
 ## CPU/CUDA honesty policy

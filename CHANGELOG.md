@@ -89,8 +89,8 @@ measured by the eval-harness scorecard, not asserted in prose — different
 tasks and selection strategies are expected to show different, sometimes
 negligible, deltas. The process-reward scorer ships as a transparent
 heuristic plus a trait for a future trained head; the trained head is
-explicitly future work (returns `AarambhError::Unsupported`, not
-`todo!()`), and no trained checkpoint ships. Best-of-N is text-only in
+explicitly future work (returns `AarambhError::Unsupported`, not a
+stub macro), and no trained checkpoint ships. Best-of-N is text-only in
 Phase 45; multimodal best-of-N is future work, not a half-implementation.
 
 ## [4.0.0-alpha.4] - 2026-08-16
