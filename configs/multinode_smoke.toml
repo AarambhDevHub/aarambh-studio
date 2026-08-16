@@ -1,0 +1,62 @@
+dataset_path = "data/tiny_shakespeare.txt"
+tokenizer_save_path = "checkpoints/multinode_smoke/tokenizer.json"
+vocab_size = 8000
+validation_split = 0.01
+shuffle = true
+resume = false
+device = "cpu"
+
+[model]
+vocab_size = 8000
+hidden_dim = 128
+ffn_dim = 256
+n_layers = 2
+n_heads = 2
+n_kv_heads = 1
+max_seq_len = 64
+rope_theta = 10000.0
+norm_eps = 0.00001
+tie_embeddings = true
+
+[train]
+lr = 0.001
+batch_size = 1
+grad_accum_steps = 4
+max_epochs = 1
+max_steps = 8
+warmup_steps = 4
+min_lr_ratio = 0.1
+weight_decay = 0.1
+beta1 = 0.9
+beta2 = 0.95
+epsilon = 0.00000001
+clip_grad_norm = 1.0
+save_every_n_steps = 0
+log_every_n_steps = 4
+eval_steps = 0
+seed = 42
+checkpoint_dir = "checkpoints/multinode_smoke"
+
+# Phase 44 multi-node configuration. This CPU smoke config deserialises the
+# multi-node fields and exercises the single-process fallback path (no CUDA
+# available on CPU). The real multi-node code paths — topology derivation,
+# TCP rendezvous, single-retry fault policy, and global-rank-zero
+# checkpointing — are verified by the `distributed` unit-test suite (run by
+# scripts/phase44_smoke.sh). A genuine multi-node run uses device = "cuda:0"
+# and is launched with one process per GPU across the configured nodes.
+[distributed]
+enabled = true
+backend = "nccl"
+num_nodes = 2
+gpus_per_node = 1
+node_rank = 0
+local_rank = 0
+run_id = "multinode-smoke"
+init_timeout_secs = 30
+bucket_bytes = 67108864
+fallback_single_gpu = true
+retry_attempts = 1
+
+[distributed.rendezvous]
+kind = "tcp"
+endpoint = "127.0.0.1:39200"

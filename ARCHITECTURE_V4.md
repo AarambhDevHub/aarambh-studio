@@ -494,6 +494,39 @@ checkpoint-and-resume on node failure) is explicitly out of scope — a
 genuinely large feature in its own right that this project does not
 attempt to half-implement.
 
+### Implementation (Phase 44, v4.0.0-alpha.4)
+
+The multi-node surface lives in `aarambh-studio-train/src/distributed.rs`:
+
+- `MultiNodeTopology { num_nodes, gpus_per_node, node_rank, local_rank }`
+  derives `global_world_size = num_nodes * gpus_per_node` and
+  `global_rank = node_rank * gpus_per_node + local_rank`; `is_global_rank0()`
+  is true only for the first node's first GPU, so exactly one process
+  globally logs and checkpoints.
+- `RendezvousTransport` enum (`File` default | `Tcp { endpoint }`):
+  `File` reproduces v2 single-node behaviour byte-for-byte; `Tcp` (Phase 44)
+  lets genuinely separate nodes exchange the 128-byte NCCL unique id over
+  the network.
+- `Rendezvous` trait + `FileRendezvous` + `TcpRendezvous`: pure
+  standard-library I/O that exchanges a `Vec<u8>` blob, so the entire
+  rendezvous layer compiles and is unit-tested on CPU without the `cuda`
+  feature. The actual NCCL `Id` only enters at the call site, behind
+  `#[cfg(feature = "cuda")]`.
+- `RetryPolicy`: one retry on a transient (timeout / connection-refused)
+  error, then fail loudly.
+- Device-count fix: a multi-node worker needs only `gpus_per_node` devices
+  locally (not the full global `world_size`); single-node runs still need
+  `world_size`.
+- `DistributedConfig` gains `num_nodes`, `node_rank`, `gpus_per_node`,
+  `rendezvous`, `retry_attempts`, all defaulting to the single-node v2
+  behaviour. Only `num_nodes >= 2` activates multi-node mode, deriving
+  `world_size` and `rank` from the topology. Every existing single-node
+  config deserialises to byte-identical v2 behaviour.
+
+The gradient all-reduce math (`all_reduce_gradients`, `sync_bucket`,
+`all_reduce_flat`) is unchanged from v2 §27 — only the topology it runs
+over and the rendezvous that bootstraps it change.
+
 ---
 
 ## 59. Test-Time Compute Scaling

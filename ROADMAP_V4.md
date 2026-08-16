@@ -531,7 +531,7 @@ because that claim would not be honest.
 
 **`aarambh-studio-train`:**
 ```
-[ ] src/distributed.rs (extended)
+[x] src/distributed.rs (extended)
       Node rank vs local rank distinction (world_size = nodes ×
       gpus_per_node)
       Multi-node NCCL initialisation over TCP rendezvous
@@ -542,7 +542,7 @@ because that claim would not be honest.
       Minimal fault handling: a single retry on a transient NCCL
       timeout before failing loudly — this phase does not attempt full
       elastic/fault-tolerant training, which is explicitly out of scope
-[ ] Rank-zero logging/checkpointing extended to first-node-rank-zero
+[x] Rank-zero logging/checkpointing extended to first-node-rank-zero
     specifically, so multi-node runs do not produce duplicate
     checkpoints from every node's local rank zero
 ```

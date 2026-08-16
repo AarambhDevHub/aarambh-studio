@@ -1,0 +1,14 @@
+{
+  "phase": 44,
+  "title": "Multi-Node Distributed Training",
+  "num_nodes": 2,
+  "gpus_per_node": 1,
+  "world_size_derived": 2,
+  "rendezvous": "tcp",
+  "rendezvous_endpoint": "127.0.0.1:39200",
+  "retry_attempts": 1,
+  "cpu_fallback": true,
+  "checkpoint": "checkpoints/multinode_smoke",
+  "checkpoint_ok": true,
+  "tensor_count": 20
+}
