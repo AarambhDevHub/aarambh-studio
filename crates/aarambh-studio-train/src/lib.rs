@@ -5,7 +5,7 @@
 pub mod checkpoint;
 /// TOML-backed training run configuration.
 pub mod config;
-/// Single-node data-parallel training helpers.
+/// Single- and multi-node data-parallel training helpers.
 pub mod distributed;
 /// Language-model loss functions.
 pub mod loss;
@@ -28,8 +28,9 @@ pub use config::{
     TrainingRunConfig, run_training_from_config, run_training_from_config_with_observer,
 };
 pub use distributed::{
-    DistributedBackend, DistributedConfig, DistributedContext, DistributedRuntime,
-    ResolvedDistributedConfig,
+    DistributedBackend, DistributedConfig, DistributedContext, DistributedRuntime, FileRendezvous,
+    MultiNodeTopology, NCCL_ID_BYTES, Rendezvous, RendezvousTransport, ResolvedDistributedConfig,
+    RetryPolicy, TcpRendezvous, build_rendezvous,
 };
 pub use loss::cross_entropy_loss;
 pub use mtp_loss::{MtpHeadLoss, MtpLossOutput, combine_mtp_losses, mtp_head_loss};

@@ -477,13 +477,31 @@ fn run_training_from_config_inner(
         .transpose()?;
     if let Some(distributed) = &distributed_config {
         if is_rank0 {
-            println!(
-                "distributed training: backend={:?} world_size={} rank={} local_rank={} dtype={dtype:?}",
-                distributed.backend,
-                distributed.world_size,
-                distributed.rank,
-                distributed.local_rank
-            );
+            if let Some(topology) = &distributed.topology {
+                println!(
+                    "distributed training (multi-node): backend={:?} num_nodes={} gpus_per_node={} node_rank={} world_size={} rank={} local_rank={} rendezvous={} dtype={dtype:?}",
+                    distributed.backend,
+                    topology.num_nodes,
+                    topology.gpus_per_node,
+                    topology.node_rank,
+                    distributed.world_size,
+                    distributed.rank,
+                    distributed.local_rank,
+                    if distributed.rendezvous.is_tcp() {
+                        "tcp"
+                    } else {
+                        "file"
+                    }
+                );
+            } else {
+                println!(
+                    "distributed training: backend={:?} world_size={} rank={} local_rank={} dtype={dtype:?}",
+                    distributed.backend,
+                    distributed.world_size,
+                    distributed.rank,
+                    distributed.local_rank
+                );
+            }
         }
     } else if is_rank0 {
         println!("training run: device={device:?} dtype={dtype:?}");

@@ -2,6 +2,91 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0-alpha.4] - 2026-08-16
+
+### Added
+
+- **Phase 44 — Multi-Node Distributed Training:** Extends v2 §27's
+  single-node NCCL data parallelism to multiple nodes — still
+  data-parallel only, not model/pipeline-parallel — so training can scale
+  past whatever a single machine's GPU count offers. The gradient
+  all-reduce math is unchanged from v2; only the topology it runs over
+  grows, and the rendezvous that shares the NCCL unique id now supports a
+  TCP transport so nodes without a shared filesystem can join the world.
+  - New `MultiNodeTopology` (`aarambh-studio-train`): combines
+    `num_nodes`, `gpus_per_node`, `node_rank`, and `local_rank` into the
+    global rank and world size that NCCL and the data loader see. The
+    invariant `world_size = num_nodes * gpus_per_node` and
+    `rank = node_rank * gpus_per_node + local_rank` holds by construction,
+    so the global rank zero — the only rank that logs and checkpoints — is
+    exactly the first node's first GPU, never every node's local rank zero.
+  - New `RendezvousTransport` enum (`File` default | `Tcp { endpoint }`):
+    `File` reproduces v2 single-node behaviour byte-for-byte (a
+    shared-filesystem rendezvous directory); `Tcp` (Phase 44) lets
+    genuinely separate nodes exchange the 128-byte NCCL unique id over the
+    network — rank 0 binds `endpoint`, every other rank connects to
+    receive the id. Required for multi-node runs whose nodes do not share
+    a filesystem.
+  - New `Rendezvous` trait + `FileRendezvous` + `TcpRendezvous`
+    implementations: pure standard-library I/O that exchange a `Vec<u8>`
+    blob, so the entire rendezvous layer compiles and is unit-tested on
+    CPU without the `cuda` feature. The actual NCCL `Id` type only enters
+    at the call site, behind `#[cfg(feature = "cuda")]` — the same
+    structure v2 used for its own distributed code.
+  - New `RetryPolicy`: implements the roadmap's "exactly one retry on a
+    transient NCCL rendezvous timeout, then fail loudly" behaviour,
+    without attempting full elastic training (explicitly out of scope). A
+    transient error (timeout or connection-refused during the brief window
+    before rank 0 is listening) is retried once; non-transient errors
+    (shape mismatch, unsupported build, invalid config) propagate
+    immediately.
+  - Device-count fix: v2 required `device_count >= world_size` on every
+    worker, which is wrong for multi-node (a 2-node × 2-GPU world has
+    `world_size = 4` but each node only has 2 GPUs). Phase 44 changes the
+    check to require `device_count >= gpus_per_node` (multi-node) and keep
+    `>= world_size` (single-node) — so a multi-node worker only needs the
+    GPUs it actually hosts, not the whole global world.
+  - `DistributedConfig` gains five fields — `num_nodes`, `node_rank`,
+    `gpus_per_node`, `rendezvous`, `retry_attempts` — all defaulting to
+    the single-node v2 behaviour (`num_nodes = 1`, `rendezvous = File`,
+    `retry_attempts = 1`). Every existing single-node config deserialises
+    to byte-identical v2 behaviour; only `num_nodes >= 2` activates
+    multi-node mode, deriving `world_size` and `rank` from the topology.
+  - New env overrides: `AARAMBH_STUDIO_NUM_NODES`,
+    `AARAMBH_STUDIO_NODE_RANK`, `AARAMBH_STUDIO_GPUS_PER_NODE`,
+    `AARAMBH_STUDIO_DIST_RENDEZVOUS_ENDPOINT`, `AARAMBH_STUDIO_DIST_RETRIES`.
+  - New config: `configs/multinode_smoke.toml` (CPU smoke with
+    `num_nodes = 2`, `gpus_per_node = 1`, TCP rendezvous on loopback,
+    `retry_attempts = 1`); new script `scripts/phase44_smoke.sh`; new doc
+    `docs/phase44_multi_node.md`.
+  - Tests (CPU, no cuda, 15 total): `world_size_one_node_reproduces_v2_single_node_behaviour_exactly`,
+    `gradient_all_reduce_correctness_across_simulated_multi_node_topology`,
+    `rank_zero_checkpoint_writes_from_exactly_one_process_globally`,
+    `transient_nccl_timeout_triggers_single_retry_then_fails_loudly`,
+    `multi_node_topology_derives_global_rank_and_world_size`,
+    `invalid_multi_node_topology_rejected`,
+    `multi_node_config_requires_gpus_per_node_devices_not_world_size`,
+    `file_rendezvous_round_trips_id_bytes`,
+    `file_rendezvous_receive_times_out_when_rank0_never_publishes`,
+    `tcp_rendezvous_broadcasts_id_bytes_across_loopback`,
+    `sharded_data_loader_partitions_across_global_world_size_not_local_gpus`,
+    `multi_node_topology_validate_requires_tcp_endpoint_when_configured`,
+    plus the three inherited v2 tests (`config_env_overrides_world_rank_and_local_rank`,
+    `gradient_average_matches_two_rank_mean`, `invalid_rank_is_rejected`).
+    The TCP rendezvous test binds an ephemeral loopback port and runs four
+    threads as the four ranks of a 2-node × 2-GPU world.
+
+### Honesty note on hardware
+
+Kaggle notebooks do not provide genuine multi-node access. This phase is
+validated using (a) the `distributed` unit-test suite exercising the real
+multi-node code paths (topology, TCP rendezvous over loopback, retry
+policy, rank-zero decision, device-count fix) on CPU, and (b) a documented
+single-machine loopback simulation or external multi-VM tunnel for the
+real NCCL path. Real-hardware multi-node throughput numbers are reported
+only where genuinely available and are clearly labelled as such — never
+implied from the simulation path.
+
 ## [4.0.0-alpha.3] - 2026-08-15
 
 ### Added
