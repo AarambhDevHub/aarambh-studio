@@ -2,6 +2,95 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0-alpha.6] - 2026-08-16
+
+### Added
+
+- **Phase 46 — RLAIF (Reinforcement Learning from AI Feedback):** Adds a
+  third alignment signal, alongside GRPO (v1 §11, verifier-based) and DPO
+  (v2 §28, human-preference-based). A frozen judge model scores pairs of
+  self-sampled completions, automatically generating preference data that
+  feeds the existing DPO training pipeline **unchanged** — useful for
+  open-ended quality dimensions where neither a hard verifier nor a static
+  human preference dataset is available. RLAIF is deliberately architected
+  as a **data-generation front end**, not a new training objective:
+  `dpo_loss` (v2 §28) is byte-for-byte unchanged.
+  - New `rlaif` module (`aarambh-studio-finetune`: `rlaif.rs`):
+    `RlaifConfig` (serde, `Default`, `validate`), `RlaifRunConfig`,
+    `RlaifSummary`, `RlaifPair` (carries a `provenance: "rlaif_judge"`
+    marker per `SELF_LEARNING_V4.md` §46).
+  - New `JudgeGenerator` trait (`aarambh-studio-finetune`): deliberately
+    free of `aarambh-studio-inference` types so the finetune crate
+    (Layer 4) does not depend on the inference crate (Layer 5) — the
+    same architectural boundary Phase 45's `CompletionVerifier` trait
+    established. The `InferenceEngine` implementation lives in the CLI
+    binary (`InferenceJudge`), alongside `MathVerifierAdapter`.
+  - New `CandidateSampler` trait (`aarambh-studio-finetune`): abstracts
+    v1 §12's N-completion sampling pattern (sample N candidates with
+    seeds `base + i`). The `InferenceEngine` implementation lives in
+    the CLI binary (`InferenceSampler`).
+  - New `JudgeVerdict` / `JudgeChoice` (`A`/`B`/`Tie`) /
+    `parse_judge_verdict` (`aarambh-studio-finetune`): robust JSON
+    parser; malformed JSON, unknown `preferred` values, or non-finite
+    margins all fall back to a neutral `Tie` with margin `0.0` — the pair
+    is then discarded downstream rather than trusted at face value.
+  - New `BiasCorrectedPair` / `AgreementLevel` /
+    `judge_pair_both_orderings` / `resolve_preference`
+    (`aarambh-studio-finetune`): **position-swap bias correction** —
+    every pair is judged twice, in both A/B and B/A orderings. Judges
+    have a documented first-position bias; when the two orderings agree,
+    the pair is emitted at weight 1.0 (or down-weighted by margin when
+    below `agreement_margin`); when they disagree, the pair is
+    down-weighted to `DISAGREEMENT_WEIGHT` (0.25) using the
+    more-confident ordering's verdict, or discarded entirely
+    (`--discard-disagreements`) or when the disagreement is ambiguous
+    (equal margins). Ties are discarded.
+  - New `generate_rlaif_dataset` / `write_preference_jsonl` /
+    `run_rlaif_with_engines` (`aarambh-studio-finetune`): the main
+    entrypoint — sample N candidates per prompt, form all `C(N, 2)`
+    pairs, judge both orderings, resolve preferences, and output
+    `(chosen, rejected)` pairs in the **exact** `{prompt, chosen,
+    rejected}` JSONL schema `DpoDataset::from_jsonl` already consumes.
+  - New CLI subcommand: `finetune rlaif --base <policy> [--judge <judge>]
+    --prompts <jsonl> --output <jsonl> [--n-candidates N] [--temperature]
+    [--top-k] [--top-p] [--seed] [--max-new-tokens] [--judge-max-tokens]
+    [--bias-threshold] [--discard-disagreements] [--max-pairs]`. The
+    judge defaults to the policy (`--base`) for self-judging, per the
+    roadmap: "a frozen checkpoint — either the same model at an earlier
+    stage, or the Large scale judging Small/Tiny outputs".
+  - Four roadmap-named acceptance tests in `rlaif.rs` (plus 12 supporting
+    CPU unit tests): position-swap disagreement is down-weighted not
+    silently trusted; generated pairs match the existing DPO pair schema
+    exactly; RLAIF-generated pairs fed into the unmodified DPO pipeline
+    train successfully (a real `DpoTrainer::train_step` on the generated
+    pairs, mirroring the existing `dpo_trainer_updates_only_dora_adapter_variables`
+    test); and the RLAIF run reports a non-negative win-rate delta on the
+    preference eval task (measured, not assumed — same discipline as
+    every other v3/v4 alignment phase).
+  - New `configs/rlaif_smoke.toml`: CPU smoke training config (tiny
+    Shakespeare, 8 steps) that produces a checkpoint the smoke script
+    runs RLAIF against (policy == judge, self-judging).
+  - New `scripts/phase46_smoke.sh`: runs the `rlaif` finetune-crate unit
+    tests, trains a tiny checkpoint, generates a preference-pair JSONL via
+    `finetune rlaif --n-candidates 2`, verifies the JSONL is valid DPO
+    schema, feeds it into the unmodified `finetune dpo` pipeline (1 step),
+    verifies the new flags appear in `finetune rlaif --help`, and writes a
+    scorecard to `artifacts/phase46_rlaif_smoke.json`.
+  - New `docs/phase46_rlaif.md`: dedicated Phase 46 runbook (mirrors
+    `docs/phase45_test_time.md` structure).
+
+### Changed
+
+- `DpoTrainer.train_loader` field widened from private to `pub(crate)`
+  (`aarambh-studio-finetune`: `dpo.rs`) so the RLAIF integration test in
+  `rlaif.rs` can pull one batch and prove the pairs feed through the
+  unmodified `train_step`. Not part of the public API; `dpo_loss`,
+  `DpoDataset`, `DpoTrainer::new`, and `run_dpo_from_config` are
+  byte-for-byte unchanged.
+- Workspace version bumped to `4.0.0-alpha.6`.
+- CI workflow (`.github/workflows/ci.yml`) CLI smoke step now exercises
+  `finetune rlaif --help`.
+
 ## [4.0.0-alpha.5] - 2026-08-16
 
 ### Added

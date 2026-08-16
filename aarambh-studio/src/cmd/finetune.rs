@@ -1,16 +1,21 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use aarambh_studio_core::{Result, TokenizerLike};
 use aarambh_studio_finetune::{
-    AdapterMethod, AudioVlmDoraRunConfig, DocumentVlmDoraRunConfig, DpoConfig, DpoRunConfig,
-    GrpoConfig, GrpoRunConfig, GrpoThinkingMode, LoraConfig, SftRunConfig, VerifierKind,
-    VideoVlmDoraRunConfig, VlmDoraRunConfig, merge_adapter_from_paths,
-    run_audio_vlm_dora_from_config, run_document_vlm_dora_from_config, run_dora_from_config,
-    run_dpo_from_config, run_grpo_from_config, run_sft_from_config, run_tool_sft_from_config,
+    AdapterMethod, AudioVlmDoraRunConfig, CandidateSampler, DocumentVlmDoraRunConfig, DpoConfig,
+    DpoRunConfig, GrpoConfig, GrpoRunConfig, GrpoThinkingMode, JudgeGenerator, LoraConfig,
+    RlaifConfig, SftRunConfig, VerifierKind, VideoVlmDoraRunConfig, VlmDoraRunConfig,
+    merge_adapter_from_paths, read_prompts_jsonl, run_audio_vlm_dora_from_config,
+    run_document_vlm_dora_from_config, run_dora_from_config, run_dpo_from_config,
+    run_grpo_from_config, run_rlaif_with_engines, run_sft_from_config, run_tool_sft_from_config,
     run_video_vlm_dora_from_config, run_vlm_dora_from_config,
 };
+use aarambh_studio_inference::{GenerationConfig, InferenceEngine, Sampler, ThinkingMode};
+use aarambh_studio_tokenizer::BpeTokenizer;
 use aarambh_studio_train::TrainingRunConfig;
 use aarambh_studio_vision::{FrameSamplingStrategy, LayoutEncodingKind, TemporalEncodingKind};
+use aarambh_studio_weights::load_any_model;
 use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
@@ -38,6 +43,7 @@ pub enum FinetuneCommand {
     Grpo(GrpoArgs),
     Dpo(DpoArgs),
     Qdpo(DpoArgs),
+    Rlaif(RlaifArgs),
     Merge(MergeArgs),
 }
 
@@ -201,6 +207,67 @@ pub struct DpoArgs {
     pub no_shuffle: bool,
 }
 
+/// Phase 46 — RLAIF command-line arguments.
+///
+/// Generates `(chosen, rejected)` preference pairs in the exact DPO schema
+/// from AI-judged self-sampled candidates, with position-swap bias
+/// correction. The output JSONL feeds directly into the unmodified
+/// `finetune dpo` pipeline.
+#[derive(Debug, Args)]
+pub struct RlaifArgs {
+    /// Training/model TOML config (provides model architecture + device).
+    #[arg(long, default_value = "configs/rlaif_smoke.toml")]
+    pub config: PathBuf,
+    /// Policy checkpoint whose completions are judged.
+    #[arg(long)]
+    pub base: PathBuf,
+    /// Frozen judge checkpoint; defaults to the policy (`--base`) for
+    /// self-judging. Per the roadmap, the judge is "a frozen checkpoint —
+    /// either the same model at an earlier stage, or the Large scale
+    /// judging Small/Tiny outputs".
+    #[arg(long)]
+    pub judge: Option<PathBuf>,
+    /// Tokenizer JSON path (optional; falls back to the config).
+    #[arg(long)]
+    pub tokenizer: Option<PathBuf>,
+    /// Input prompts JSONL path (`{"prompt": "..."}` per line).
+    #[arg(long)]
+    pub prompts: PathBuf,
+    /// Output preference-pair JSONL path (DPO schema).
+    #[arg(long)]
+    pub output: PathBuf,
+    /// Number of candidate completions sampled per prompt.
+    #[arg(long, default_value_t = aarambh_studio_finetune::rlaif::DEFAULT_N_CANDIDATES)]
+    pub n_candidates: usize,
+    /// Maximum new tokens generated per candidate.
+    #[arg(long, default_value_t = aarambh_studio_finetune::rlaif::DEFAULT_CANDIDATE_MAX_TOKENS)]
+    pub max_new_tokens: usize,
+    /// Sampling temperature for candidate generation.
+    #[arg(long, default_value_t = aarambh_studio_finetune::rlaif::DEFAULT_CANDIDATE_TEMPERATURE)]
+    pub temperature: f32,
+    /// Optional top-k limit for candidate sampling.
+    #[arg(long)]
+    pub top_k: Option<usize>,
+    /// Optional nucleus probability mass for candidate sampling.
+    #[arg(long)]
+    pub top_p: Option<f32>,
+    /// Base RNG seed for candidate sampling.
+    #[arg(long, default_value_t = aarambh_studio_finetune::rlaif::DEFAULT_SEED)]
+    pub seed: u64,
+    /// Maximum new tokens generated per judge verdict.
+    #[arg(long, default_value_t = aarambh_studio_finetune::rlaif::DEFAULT_JUDGE_MAX_TOKENS)]
+    pub judge_max_tokens: usize,
+    /// Margin below which an agreement is treated as low-confidence.
+    #[arg(long, default_value_t = aarambh_studio_finetune::rlaif::DEFAULT_AGREEMENT_MARGIN)]
+    pub bias_threshold: f32,
+    /// Discard disagreement pairs instead of down-weighting them.
+    #[arg(long, default_value_t = false)]
+    pub discard_disagreements: bool,
+    /// Optional cap on the number of pairs emitted per prompt.
+    #[arg(long)]
+    pub max_pairs: Option<usize>,
+}
+
 #[derive(Debug, Args)]
 pub struct VlmFinetuneArgs {
     #[arg(long, default_value = "configs/vision_vqa_instruct.toml")]
@@ -293,6 +360,7 @@ pub fn run(args: FinetuneArgs) -> anyhow::Result<()> {
         FinetuneCommand::Grpo(args) => run_grpo(args),
         FinetuneCommand::Dpo(args) => run_dpo(args, false),
         FinetuneCommand::Qdpo(args) => run_dpo(args, true),
+        FinetuneCommand::Rlaif(args) => run_rlaif(args),
         FinetuneCommand::Merge(args) => run_merge(args),
     }
 }
@@ -673,6 +741,140 @@ fn run_dpo(args: DpoArgs, qdpo: bool) -> anyhow::Result<()> {
         shuffle: !args.no_shuffle && run_config.shuffle,
     };
     run_dpo_from_config(config)?;
+    Ok(())
+}
+
+/// Thin wrapper that adapts an [`InferenceEngine`] into a [`JudgeGenerator`].
+///
+/// The finetune crate owns the `JudgeGenerator` trait; the CLI binary owns
+/// the `InferenceEngine` wiring — the same architectural layering Phase 45
+/// established with `CompletionVerifier` / `MathVerifierAdapter`.
+struct InferenceJudge {
+    engine: InferenceEngine,
+}
+
+impl JudgeGenerator for InferenceJudge {
+    fn generate_verdict(&mut self, judge_prompt: &str, max_tokens: usize) -> Result<String> {
+        let config = GenerationConfig {
+            max_new_tokens: max_tokens,
+            sampler: Sampler::greedy(),
+            thinking_mode: ThinkingMode::None,
+            top_candidates: 5,
+            tool_calling: None,
+            stop_sequences: Vec::new(),
+            capture_steps: false,
+        };
+        Ok(self.engine.generate(judge_prompt, config)?.text)
+    }
+}
+
+/// Thin wrapper that adapts an [`InferenceEngine`] into a
+/// [`CandidateSampler`], reusing the v1 §12 N-completion sampling pattern
+/// (sample N candidates with seeds `base + i`).
+struct InferenceSampler {
+    engine: InferenceEngine,
+}
+
+impl CandidateSampler for InferenceSampler {
+    fn sample_candidates(
+        &mut self,
+        prompt: &str,
+        n: usize,
+        config: &RlaifConfig,
+    ) -> Result<Vec<String>> {
+        let mut candidates = Vec::with_capacity(n);
+        for i in 0..n {
+            let seed = config.seed.wrapping_add(i as u64);
+            let sampler = Sampler::top_k_top_p(
+                config.candidate_temperature,
+                config.candidate_top_k,
+                config.candidate_top_p,
+                Some(seed),
+            )
+            .unwrap_or_else(|_| Sampler::greedy());
+            let generation_config = GenerationConfig {
+                max_new_tokens: config.candidate_max_new_tokens,
+                sampler,
+                thinking_mode: ThinkingMode::None,
+                top_candidates: 5,
+                tool_calling: None,
+                stop_sequences: Vec::new(),
+                capture_steps: false,
+            };
+            let text = self.engine.generate(prompt, generation_config)?.text;
+            candidates.push(text);
+        }
+        Ok(candidates)
+    }
+}
+
+/// Phase 46 — RLAIF dispatch: build policy + judge engines, sample
+/// candidates, judge pairs in both orderings, write DPO-schema JSONL.
+fn run_rlaif(args: RlaifArgs) -> anyhow::Result<()> {
+    let run_config = TrainingRunConfig::from_toml(&args.config)?;
+    let device = run_config.device()?;
+    let tokenizer_path = tokenizer_path(args.tokenizer.as_ref(), &run_config);
+    let candle_device = device.to_candle()?;
+    let tokenizer = BpeTokenizer::from_pretrained(&tokenizer_path)?;
+    tokenizer.validate_special_tokens()?;
+    let mut model_config = run_config.model.clone();
+    model_config.vocab_size = tokenizer.vocab_size();
+
+    let rlaif = RlaifConfig {
+        n_candidates: args.n_candidates,
+        candidate_temperature: args.temperature,
+        candidate_top_k: args.top_k,
+        candidate_top_p: args.top_p,
+        candidate_max_new_tokens: args.max_new_tokens,
+        judge_max_tokens: args.judge_max_tokens,
+        bias_discard: args.discard_disagreements,
+        agreement_margin: args.bias_threshold,
+        max_pairs_per_prompt: args.max_pairs,
+        seed: args.seed,
+        ..RlaifConfig::default()
+    };
+    rlaif.validate()?;
+
+    eprintln!("rlaif: loading policy checkpoint");
+    let policy_model = load_any_model(&args.base, &model_config, &candle_device)?;
+    let mut sampler = InferenceSampler {
+        engine: InferenceEngine::new(policy_model, tokenizer.clone(), candle_device.clone())?,
+    };
+
+    let judge_path = args.judge.unwrap_or_else(|| args.base.clone());
+    let self_judging = judge_path == args.base;
+    let mut judge = if self_judging {
+        eprintln!("rlaif: judge == policy (self-judging configuration)");
+        let judge_model = load_any_model(&judge_path, &model_config, &candle_device)?;
+        InferenceJudge {
+            engine: InferenceEngine::new(judge_model, tokenizer, candle_device)?,
+        }
+    } else {
+        eprintln!("rlaif: loading separate judge checkpoint");
+        let judge_model = load_any_model(&judge_path, &model_config, &candle_device)?;
+        InferenceJudge {
+            engine: InferenceEngine::new(judge_model, tokenizer, candle_device)?,
+        }
+    };
+
+    eprintln!("rlaif: reading prompts from {}", args.prompts.display());
+    let prompts = read_prompts_jsonl(&args.prompts)?;
+    eprintln!(
+        "rlaif: {} prompts, n_candidates={}",
+        prompts.len(),
+        rlaif.n_candidates
+    );
+
+    eprintln!("rlaif: generating preference pairs");
+    let summary = run_rlaif_with_engines(&mut sampler, &mut judge, &prompts, &rlaif, &args.output)?;
+    eprintln!(
+        "rlaif: done — emitted {}, discarded {}, agreements {}, disagreements {}, mean_margin {:.3}",
+        summary.pairs_emitted,
+        summary.pairs_discarded,
+        summary.agreements,
+        summary.disagreements,
+        summary.mean_margin
+    );
     Ok(())
 }
 

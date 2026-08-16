@@ -660,6 +660,15 @@ git tag v4.0.0-alpha.5
 
 **Duration:** 7–10 days | **Hardware:** Kaggle (free quota)
 
+> **Status: Implemented in v4.0.0-alpha.6.** `crates/aarambh-studio-finetune/src/rlaif.rs`
+> ships the `JudgeGenerator`/`CandidateSampler` traits (Layer-4-clean, no inference-crate
+> dependency — the `InferenceEngine` impls live in the CLI binary, mirroring Phase 45's
+> `CompletionVerifier`/`MathVerifierAdapter` layering), the position-swap bias correction
+> (every pair judged in both A/B orderings, disagreements down-weighted or discarded), and
+> the `(chosen, rejected)` output schema that feeds the unmodified `finetune dpo` pipeline.
+> The `finetune rlaif` CLI subcommand wires policy + judge `InferenceEngine`s. See
+> `docs/phase46_rlaif.md`.
+
 ### Goal
 A third alignment signal, alongside GRPO (v1 §11, verifier-based) and
 DPO (v2 §28, human-preference-based): a judge model scores pairs of
@@ -672,7 +681,7 @@ static human preference dataset is available.
 
 **`aarambh-studio-finetune`:**
 ```
-[ ] src/rlaif.rs
+[x] src/rlaif.rs
       Judge prompt template: given a prompt and two candidate
       completions, the judge (a frozen checkpoint — either the same
       model at an earlier stage, or the Large scale judging Small/Tiny
@@ -684,7 +693,7 @@ static human preference dataset is available.
       Output format: identical (chosen, rejected) pair schema DPO
       already consumes (v2 §28) — RLAIF is a data-generation front end,
       not a new training objective
-[ ] Reuses v1 §12's self-learning N-completion sampling infrastructure
+[x] Reuses v1 §12's self-learning N-completion sampling infrastructure
     to generate the candidate pairs before judging
 ```
 

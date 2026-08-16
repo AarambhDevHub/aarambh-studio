@@ -702,6 +702,50 @@ baseline using v2 §28's existing `preference` eval task — an honest
 delta, not a claimed win, the same discipline every alignment claim in
 this project has held since v1.
 
+### Implementation (Phase 46, v4.0.0-alpha.6)
+
+`aarambh-studio-finetune/src/rlaif.rs` ships:
+
+- `RlaifConfig` (serde, `Default`, `validate`): `n_candidates` (4),
+  candidate sampling temperature/top-k/top-p/max-tokens, judge
+  max-tokens, `bias_discard` (false), `agreement_margin` (0.1),
+  `max_pairs_per_prompt`, base `seed`, judge prompt template.
+- `JudgeGenerator` trait — deliberately free of `aarambh-studio-inference`
+  types so the finetune crate (Layer 4) does not depend on the inference
+  crate (Layer 5), mirroring Phase 45's `CompletionVerifier` layering.
+  `generate_verdict(judge_prompt, max_tokens)` takes an already-built
+  judge prompt so the finetune crate owns the template logic.
+- `CandidateSampler` trait — abstracts v1 §12's N-completion sampling
+  pattern (sample N candidates with seeds `base + i`).
+- `JudgeVerdict` / `JudgeChoice` (`A`/`B`/`Tie`) / `parse_judge_verdict`
+  (robust JSON parse; malformed JSON / unknown `preferred` / non-finite
+  margin → neutral `Tie` with margin 0.0, discarded downstream).
+- `BiasCorrectedPair` / `AgreementLevel` — `judge_pair_both_orderings`
+  judges every pair in both A/B and B/A orderings; `resolve_preference`
+  applies position-swap bias correction (agreement → weight 1.0 or
+  margin-down-weighted; tie → discarded; disagreement → down-weighted
+  to `DISAGREEMENT_WEIGHT` (0.25) or discarded, more-confident ordering's
+  verdict wins, equal margins → discarded as ambiguous).
+- `generate_rlaif_dataset` — the main entrypoint: sample N candidates per
+  prompt, form all `C(N, 2)` pairs, judge both orderings, resolve
+  preferences, return `Vec<DpoExample>` + `RlaifSummary`.
+- `write_preference_jsonl` — writes the exact `{prompt, chosen, rejected}`
+  schema `DpoDataset::from_jsonl` consumes.
+- `RlaifPair` carries a `provenance: "rlaif_judge"` marker (§46's
+  vocabulary) for downstream replay analysis.
+
+The `InferenceEngine` implementations of `JudgeGenerator`/`CandidateSampler`
+live in the CLI binary (`aarambh-studio/src/cmd/finetune.rs`:
+`InferenceJudge`, `InferenceSampler`), alongside Phase 45's
+`MathVerifierAdapter`. The `finetune rlaif` subcommand wires policy +
+judge engines, supports self-judging (`--judge` defaults to `--base`),
+and feeds the generated JSONL into the unmodified `finetune dpo` pipeline.
+`dpo_loss` (v2 §28) is byte-for-byte unchanged; only the `DpoTrainer.train_loader`
+field was widened from private to `pub(crate)` so the RLAIF integration test
+in `rlaif.rs` can pull one batch and prove the pairs train successfully.
+See `docs/phase46_rlaif.md` for the full runbook and `scripts/phase46_smoke.sh`
+for the CPU smoke test.
+
 ---
 
 ## 61. Tool Execution With Sandboxing

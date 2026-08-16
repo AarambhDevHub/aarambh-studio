@@ -1,0 +1,57 @@
+# Phase 46 — RLAIF (Reinforcement Learning from AI Feedback) smoke config.
+#
+# This CPU smoke config is used by scripts/phase46_smoke.sh. It trains a tiny
+# Shakespeare checkpoint so the smoke script has a policy + judge checkpoint
+# to run RLAIF against (the judge defaults to the policy for self-judging,
+# per the roadmap: "a frozen checkpoint — either the same model at an
+# earlier stage, or the Large scale judging Small/Tiny outputs").
+#
+# The RLAIF surface is exercised via the `finetune rlaif` subcommand (not a
+# TOML section), per the roadmap:
+#
+#   finetune rlaif --base <ckpt> --prompts <jsonl> --output <jsonl> \
+#     --n-candidates <N> [--judge <ckpt>] [--discard-disagreements]
+#
+# The four roadmap-named acceptance tests live in the finetune crate's
+# unit-test suite (run by scripts/phase46_smoke.sh). The smoke run validates
+# the CLI plumbing end-to-end on CPU: a tiny trained checkpoint, N=2
+# candidate sampling, AI-judged preference pairs in the exact DPO schema,
+# and the generated JSONL fed into the unmodified `finetune dpo` pipeline.
+dataset_path = "data/tiny_shakespeare.txt"
+tokenizer_save_path = "checkpoints/rlaif_smoke/tokenizer.json"
+vocab_size = 8000
+validation_split = 0.01
+shuffle = true
+resume = false
+device = "cpu"
+
+[model]
+vocab_size = 8000
+hidden_dim = 128
+ffn_dim = 256
+n_layers = 2
+n_heads = 2
+n_kv_heads = 1
+max_seq_len = 256
+rope_theta = 10000.0
+norm_eps = 0.00001
+tie_embeddings = true
+
+[train]
+lr = 0.001
+batch_size = 1
+grad_accum_steps = 4
+max_epochs = 1
+max_steps = 8
+warmup_steps = 4
+min_lr_ratio = 0.1
+weight_decay = 0.1
+beta1 = 0.9
+beta2 = 0.95
+epsilon = 0.00000001
+clip_grad_norm = 1.0
+save_every_n_steps = 0
+log_every_n_steps = 4
+eval_steps = 0
+seed = 42
+checkpoint_dir = "checkpoints/rlaif_smoke"
