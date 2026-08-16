@@ -7,7 +7,7 @@ use aarambh_studio_eval::{
     ProbeManifest, QatRobustnessReport, Scorecard, ScorecardComparison, run_all,
     run_capability_probes, tokenizer_fingerprint,
 };
-use aarambh_studio_inference::ThinkingMode;
+use aarambh_studio_inference::{SelectionStrategy, ThinkingMode};
 use aarambh_studio_model::{KvCacheLayerReport, kv_cache_report};
 use aarambh_studio_quant::GgufFormat;
 use aarambh_studio_tokenizer::BpeTokenizer;
@@ -66,6 +66,18 @@ pub struct EvalArgs {
     /// Print per-layer KV-cache bytes/token by attention kind and exit (v4 Phase 41).
     #[arg(long)]
     pub kv_cache_report: bool,
+    /// Generate N independent candidate completions per generative task and
+    /// record single-sample vs best-of-N accuracy in the scorecard details
+    /// (Phase 45). When set, gsm8k and humaneval tasks compute both.
+    #[arg(long)]
+    pub best_of_n: Option<usize>,
+    /// Selection strategy for best-of-N evaluation: verifier, self-consistency,
+    /// majority, or process-reward (Phase 45). Defaults to self-consistency.
+    #[arg(long, default_value = "self-consistency")]
+    pub best_of_n_selection: String,
+    /// Base RNG seed for best-of-N candidate sampling (Phase 45).
+    #[arg(long, default_value_t = 0)]
+    pub best_of_n_seed: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -111,6 +123,8 @@ pub fn run(args: EvalArgs) -> anyhow::Result<()> {
     )?;
     let context = EvalContext::new(model, tokenizer, device, dtype);
     let thinking_mode = ThinkingMode::from_str(&args.thinking).map_err(anyhow::Error::msg)?;
+    let best_of_n_selection = SelectionStrategy::from_str(&args.best_of_n_selection)
+        .map_err(|err| anyhow::anyhow!("{err}"))?;
     let eval_config = EvalConfig {
         tasks: parse_tasks(&args.tasks),
         data_dir: args.data_dir.clone(),
@@ -119,6 +133,9 @@ pub fn run(args: EvalArgs) -> anyhow::Result<()> {
         agent_max_steps: args.agent_max_steps,
         allow_code_exec: args.allow_code_exec,
         thinking_mode,
+        best_of_n: args.best_of_n,
+        best_of_n_selection,
+        best_of_n_seed: args.best_of_n_seed,
         model_path: Some(model_path.display().to_string()),
         tokenizer_path: Some(tokenizer_path.display().to_string()),
         config_path: Some(config_path.display().to_string()),
@@ -319,6 +336,8 @@ fn evaluate_checkpoint(
     let model =
         aarambh_studio_weights::load_any_model_with_dtype(model_path, model_config, device, dtype)?;
     let context = EvalContext::new(model, tokenizer.clone(), device.clone(), dtype);
+    let best_of_n_selection = SelectionStrategy::from_str(&args.best_of_n_selection)
+        .map_err(|err| anyhow::anyhow!("{err}"))?;
     run_all(
         &context,
         &EvalConfig {
@@ -329,6 +348,9 @@ fn evaluate_checkpoint(
             agent_max_steps: args.agent_max_steps,
             allow_code_exec: args.allow_code_exec,
             thinking_mode: ThinkingMode::from_str(&args.thinking).map_err(anyhow::Error::msg)?,
+            best_of_n: args.best_of_n,
+            best_of_n_selection,
+            best_of_n_seed: args.best_of_n_seed,
             model_path: Some(model_path.display().to_string()),
             tokenizer_path: Some(tokenizer_path.display().to_string()),
             config_path: Some(config_path.display().to_string()),

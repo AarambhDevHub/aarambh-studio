@@ -590,6 +590,53 @@ technique's general reputation. Different tasks and selection
 strategies are expected to show different — sometimes negligible —
 deltas; the scorecard is the source of truth, not the roadmap's prose.
 
+### Implementation (Phase 45, v4.0.0-alpha.5)
+
+The test-time-compute surface lives in three new modules of
+`aarambh-studio-inference`:
+
+- `best_of_n.rs`: `SelectionStrategy` enum
+  (`Verifier | SelfConsistency | Majority | ProcessReward`), the local
+  `CompletionVerifier` trait (kept local so the inference crate does not
+  depend on the finetune crate that owns `Verifier` / `MathVerifier` /
+  `CodeVerifier` — the CLI binary adapts at the call site),
+  `BestOfNConfig`, `BestOfNEngine`, `BestOfNOutput`, and
+  `SelectionRationale`. `BestOfNEngine` wraps an `InferenceEngine` and
+  reuses `prepare_session` + `fork_with_config` + `decode_sessions` so the
+  prompt KV-cache is prefilled once and the N forks are decoded together
+  in one batched target forward pass. Candidate 0 inherits the input
+  sampler's seed unchanged (N=1 reproduces single-sample byte-for-byte);
+  candidates 1..N are re-seeded `base_seed + i`.
+- `self_consistency.rs`: `extract_final_number` (byte-identical
+  re-declaration of `aarambh_studio_finetune::extract_final_number`,
+  attributed, so no cross-crate dependency), `extract_final_answer`,
+  `majority_vote` (first-occurrence tie-breaking), and
+  `self_consistency_select`.
+- `process_reward.rs`: `ProcessRewardScorer` trait,
+  `HeuristicProcessRewardScorer` (transparent structural scorer: rewards
+  a non-empty thinking block, a final-answer marker, a parsable numeric
+  answer, and a non-trivial step count), and `ProcessRewardHead`
+  (placeholder for a future trained head; returns
+  `AarambhError::Unsupported` until a checkpoint exists — no trained
+  checkpoint ships, per the release audit).
+
+The `aarambh-studio-eval` crate gains `best_of_n_generate` /
+`sample_generate` / `BestOfNOptions` / `BestOfNResult` in `generation.rs`
+and `best_of_n` / `best_of_n_selection` / `best_of_n_seed` fields on
+`EvalConfig`. When `best_of_n` is set, the `gsm8k_subset` and
+`humaneval_lite` tasks compute both single-sample and best-of-N accuracy
+and record `single_sample_accuracy`, `best_of_n_accuracy`, and
+`best_of_n_delta` in their `TaskScore::details` map.
+
+The `aarambh-studio` CLI gains `--best-of-n` / `--selection` /
+`--ground-truth` on `infer` and `--best-of-n` / `--best-of-n-selection` /
+`--best-of-n-seed` on `eval`. Best-of-N is text-only: combining
+`--best-of-n` with `--image` / `--video` / `--document` / `--audio` /
+`--tools` returns `AarambhError::Unsupported`. The `serve` crate is
+unchanged (its `GenerationRequest` wraps `GenerationConfig`, which Phase 45
+leaves untouched — the wrapper-struct approach keeps the server surface
+clean).
+
 ---
 
 ## 60. RLAIF

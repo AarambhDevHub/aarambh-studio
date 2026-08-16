@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::path::PathBuf;
 
 use aarambh_studio_core::{AarambhError, Configurable, Result};
-use aarambh_studio_inference::ThinkingMode;
+use aarambh_studio_inference::{SelectionStrategy, ThinkingMode};
 use aarambh_studio_model::AarambhModel;
 use aarambh_studio_tokenizer::BpeTokenizer;
 use candle_core::{DType, Device};
@@ -31,6 +31,14 @@ pub struct EvalConfig {
     pub allow_code_exec: bool,
     /// Thinking mode applied to thinking-aware generative tasks (Phase 39).
     pub thinking_mode: ThinkingMode,
+    /// Optional best-of-N candidate count for generative tasks (Phase 45).
+    /// When set, supported tasks compute both single-sample and best-of-N
+    /// accuracy and record the delta in their `TaskScore::details` map.
+    pub best_of_n: Option<usize>,
+    /// Selection strategy for best-of-N evaluation (Phase 45).
+    pub best_of_n_selection: SelectionStrategy,
+    /// Base RNG seed for best-of-N candidate sampling (Phase 45).
+    pub best_of_n_seed: u64,
     /// Optional model path stored in scorecards.
     pub model_path: Option<String>,
     /// Optional tokenizer path stored in scorecards.
@@ -49,6 +57,9 @@ impl Default for EvalConfig {
             agent_max_steps: 8,
             allow_code_exec: false,
             thinking_mode: ThinkingMode::None,
+            best_of_n: None,
+            best_of_n_selection: SelectionStrategy::SelfConsistency,
+            best_of_n_seed: 0,
             model_path: None,
             tokenizer_path: None,
             config_path: None,

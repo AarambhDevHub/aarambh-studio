@@ -1,0 +1,12 @@
+{
+  "phase": 45,
+  "title": "Test-Time Compute Scaling",
+  "smoke_n": 2,
+  "smoke_selection": "self-consistency",
+  "smoke_seed": 42,
+  "cpu_fallback": true,
+  "inference_unit_tests": "passed",
+  "eval_unit_tests": "passed",
+  "cli_help_surfaces_flags": true,
+  "honesty_note": "i3 supports small N (2-4) for text tasks; larger N is Kaggle-scoped for cost reasons. Whether best-of-N improves accuracy on a given task is measured by the eval-harness scorecard, not asserted here."
+}

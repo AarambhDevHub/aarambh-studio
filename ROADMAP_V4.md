@@ -593,17 +593,17 @@ sits alongside, not inside, the existing thinking-mode budget system.
 
 **`aarambh-studio-inference`:**
 ```
-[ ] src/best_of_n.rs
+[x] src/best_of_n.rs
       Parallel N-sample generation, reusing the existing sampler and
       (where enabled) speculative decoding infrastructure (v2 §29) for
       each candidate independently
       SelectionStrategy enum: Verifier | SelfConsistency | Majority
-[ ] src/self_consistency.rs
+[x] src/self_consistency.rs
       For verifiable tasks (math/code): generate N candidates, extract
       final answers, majority-vote — reuses MathVerifier/CodeVerifier
       (v1 §11, v2 §22) purely for answer extraction/comparison, not
       scoring
-[ ] src/process_reward.rs
+[x] src/process_reward.rs
       Optional lightweight process-reward scoring: a small classifier
       head trained on GRPO/DPO-style contrastive step data, scores
       intermediate reasoning steps rather than only final answers, used
@@ -613,12 +613,12 @@ sits alongside, not inside, the existing thinking-mode budget system.
 
 **`aarambh-studio` CLI:**
 ```
-[ ] infer --best-of-n <N> --selection verifier|self-consistency|majority
+[x] infer --best-of-n <N> --selection verifier|self-consistency|majority
 ```
 
 **`aarambh-studio-eval`:**
 ```
-[ ] eval --compare gains a --best-of-n flag so scorecards can report
+[x] eval --compare gains a --best-of-n flag so scorecards can report
     "single-sample" vs "best-of-N" side by side — same measure-don't-
     assume discipline v2 §22 established
 ```

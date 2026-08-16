@@ -224,6 +224,9 @@ fn run_start(args: StartArgs) -> anyhow::Result<()> {
         forgetting_allow_code_exec: args.forgetting.forgetting_allow_code_exec,
         forgetting_require_all_probes: args.forgetting.require_all_probes,
         forgetting_baseline_id: args.forgetting.forgetting_baseline_id,
+        best_of_n: None,
+        selection: "self-consistency".into(),
+        ground_truth: None,
     })
 }
 
