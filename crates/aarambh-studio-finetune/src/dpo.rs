@@ -347,7 +347,10 @@ pub struct DpoTrainer {
     varmap: VarMap,
     optimizer: AdamW,
     schedule: CosineScheduleWithWarmup,
-    train_loader: DpoDataLoader,
+    /// Crate-visible so the Phase 46 RLAIF integration test (in `rlaif.rs`)
+    /// can pull one batch and prove RLAIF-generated pairs feed through the
+    /// unmodified DPO `train_step`. Not part of the public API.
+    pub(crate) train_loader: DpoDataLoader,
     dpo_config: DpoConfig,
     train_config: TrainConfig,
     output_dir: PathBuf,

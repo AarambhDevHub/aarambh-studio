@@ -83,6 +83,7 @@ jobs:
           target/release/aarambh-studio finetune grpo --help
           target/release/aarambh-studio finetune dpo --help
           target/release/aarambh-studio finetune qdpo --help
+          target/release/aarambh-studio finetune rlaif --help
           target/release/aarambh-studio finetune merge --help
           target/release/aarambh-studio distill --help
           target/release/aarambh-studio distill train --help

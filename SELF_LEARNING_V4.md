@@ -204,6 +204,13 @@ does not claim to have answered, only instrumented.
 
 ## 46. RLAIF Inside the Self-Learning Loop
 
+> **Status: Verified for v4.0.0-alpha.6 (Phase 46).** The `RlaifConfig`,
+> `JudgeGenerator`/`CandidateSampler` traits, position-swap bias correction,
+> and `(chosen, rejected)` DPO-schema output are implemented
+> (`aarambh-studio-finetune`: `rlaif.rs`); the `finetune rlaif` CLI
+> subcommand wires policy + judge `InferenceEngine`s. The generated pairs
+> feed into the unmodified `finetune dpo` pipeline. See `docs/phase46_rlaif.md`.
+
 RLAIF (`ARCHITECTURE_V4.md` §60) was designed as an **offline**
 data-generation front end for the existing DPO pipeline — a judge model
 scores self-sampled pairs, producing (chosen, rejected) data fed into

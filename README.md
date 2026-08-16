@@ -18,11 +18,11 @@ with hybrid Gated DeltaNet, DeepSeek Sparse Attention,
 fine-grained MoE with shared experts, Multi-Token Prediction (MTP), on-policy
 distillation, native quantization-aware training, native video/document input,
 bounded long-horizon tool-use chains, persistent forgetting diagnostics, and
-Max thinking mode (16,384-token budget). **v4.0.0-alpha.5** continues the v4 arc
+Max thinking mode (16,384-token budget). **v4.0.0-alpha.6** continues the v4 arc
 with Multi-Head Latent Attention (Phase 41), a native Audio modality
 (Phase 42), sparse/grouped MoE dispatch (Phase 43), multi-node
-distributed training (Phase 44), and test-time compute scaling
-(Phase 45) — a frozen audio
+distributed training (Phase 44), test-time compute scaling
+(Phase 45), and RLAIF (Phase 46) — a frozen audio
 spectrogram transformer plus trainable projector that lets the model hear and
 reason about audio clips (the same frozen-encoder-plus-projector recipe vision,
 video, and documents use), real sparse expert dispatch where each token
@@ -30,11 +30,15 @@ computes only its assigned top-k experts rather than every expert on every
 token then masked (numerically equivalent to the dense path, faster on CUDA),
 data-parallel training extended across multiple nodes over a TCP
 rendezvous so the world can scale past a single machine's GPU count,
-and Best-of-N / self-consistency / verifier-guided / process-reward
+Best-of-N / self-consistency / verifier-guided / process-reward
 selection that generates N independent candidate completions and selects
 the best one at inference time — a new axis alongside the existing
 thinking-mode budget system, distinct from controlling how many tokens
-one generation spends reasoning.
+one generation spends reasoning — and RLAIF, a third alignment signal
+alongside GRPO and DPO where a frozen judge model scores pairs of
+self-sampled completions (judged in both orderings to correct position
+bias) and the resulting `(chosen, rejected)` pairs feed the existing
+unmodified `finetune dpo` pipeline.
 
 > [!IMPORTANT]
 > This is a source and engineering project. It does not publish crates to
@@ -48,7 +52,7 @@ one generation spends reasoning.
 | Model | RMSNorm, RoPE, GQA, SwiGLU, KV cache, tied embeddings, Tiny to Large configs |
 | Efficient architecture | YaRN/NTK/linear RoPE scaling, Gated DeltaNet, learned block-sparse DSA, Multi-Head Latent Attention (MLA), fine-grained MoE, sparse/grouped MoE dispatch, MTP |
 | Training | BPE data pipeline, AdamW, cosine schedule, gradient accumulation/clipping, checkpoint resume, BF16 CUDA, single-node multi-GPU, on-policy distillation, native INT4/INT8 QAT |
-| Fine-tuning | SFT, LoRA, QLoRA, DoRA, QDoRA, VLM adapters, GRPO, DPO, QDPO, tool-call tuning |
+| Fine-tuning | SFT, LoRA, QLoRA, DoRA, QDoRA, VLM adapters, GRPO, DPO, QDPO, RLAIF, tool-call tuning |
 | Inference | Greedy/sampled decoding, streaming, thinking budgets, external or one-checkpoint MTP speculation, tool grammar, caller-executed chains |
 | Model formats | SafeTensors, INT8, GPTQ/AWQ INT4, GGUF, Hugging Face conversion, quantized KV cache |
 | Evaluation | Perplexity, MMLU-lite, HellaSwag, GSM8K, HumanEval-lite, preference, recall, multimodal/tool scorecards, capability forgetting curves, and MoE routing drift |
@@ -115,7 +119,7 @@ aarambh-studio agent       Orchestrate bounded caller-executed tool-use chains
 aarambh-studio eval        Run evaluation tasks and compare scorecards
 aarambh-studio quantise    Calibrate and export INT8/INT4 GGUF checkpoints
 aarambh-studio convert     Convert SafeTensors, GGUF, or Hugging Face layouts
-aarambh-studio finetune    Run SFT, adapters, GRPO, DPO, VLM, or merge workflows
+aarambh-studio finetune    Run SFT, adapters, GRPO, DPO, RLAIF, VLM, or merge workflows
 aarambh-studio distill     Train/evaluate on-policy or offline teacher distillation
 aarambh-studio selflearn   Manage replay and persistent self-learning state
 aarambh-studio serve       Start the OpenAI-compatible HTTP/SSE server
@@ -299,7 +303,7 @@ reproducible bugs and scoped feature requests. Report vulnerabilities through
   author  = {Aarambh Dev Hub},
   year    = {2026},
   url     = {https://github.com/AarambhDevHub/aarambh-studio},
-  version = {4.0.0-alpha.5},
+  version = {4.0.0-alpha.6},
   license = {Apache-2.0}
 }
 ```

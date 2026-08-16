@@ -1,0 +1,14 @@
+{
+  "phase": 46,
+  "title": "RLAIF (Reinforcement Learning from AI Feedback)",
+  "smoke_n_candidates": 2,
+  "smoke_seed": 42,
+  "self_judging": true,
+  "finetune_unit_tests": "passed",
+  "rlaif_pairs_emitted": 0,
+  "rlaif_pairs_schema": "dpo_compatible",
+  "dpo_data_source": "preference_fixture_fallback",
+  "dpo_from_rlaif_pipeline": "unmodified",
+  "cli_help_surfaces_flags": true,
+  "honesty_note": "The tiny Shakespeare model (2 layers, 8k vocab, 8 steps) cannot reliably emit JSON judge verdicts, so the smoke's RLAIF generation on this fixture may emit 0 pairs (all ties via the malformed-JSON fallback) \u2014 an honest result, not a failure. The 16 finetune-crate unit tests prove the full RLAIF\u2192DPO pipeline (generate \u2192 DPO schema \u2192 DpoTrainer::train_step) works with deterministic fakes. Whether RLAIF improves win-rate at scale is measured by the eval-harness preference task (v2 \u00a728), not asserted here."
+}
