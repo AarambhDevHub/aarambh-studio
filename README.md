@@ -18,17 +18,23 @@ with hybrid Gated DeltaNet, DeepSeek Sparse Attention,
 fine-grained MoE with shared experts, Multi-Token Prediction (MTP), on-policy
 distillation, native quantization-aware training, native video/document input,
 bounded long-horizon tool-use chains, persistent forgetting diagnostics, and
-Max thinking mode (16,384-token budget). **v4.0.0-alpha.4** continues the v4 arc
+Max thinking mode (16,384-token budget). **v4.0.0-alpha.5** continues the v4 arc
 with Multi-Head Latent Attention (Phase 41), a native Audio modality
-(Phase 42), sparse/grouped MoE dispatch (Phase 43), and multi-node
-distributed training (Phase 44) — a frozen audio
+(Phase 42), sparse/grouped MoE dispatch (Phase 43), multi-node
+distributed training (Phase 44), and test-time compute scaling
+(Phase 45) — a frozen audio
 spectrogram transformer plus trainable projector that lets the model hear and
 reason about audio clips (the same frozen-encoder-plus-projector recipe vision,
 video, and documents use), real sparse expert dispatch where each token
 computes only its assigned top-k experts rather than every expert on every
 token then masked (numerically equivalent to the dense path, faster on CUDA),
-and data-parallel training extended across multiple nodes over a TCP
-rendezvous so the world can scale past a single machine's GPU count.
+data-parallel training extended across multiple nodes over a TCP
+rendezvous so the world can scale past a single machine's GPU count,
+and Best-of-N / self-consistency / verifier-guided / process-reward
+selection that generates N independent candidate completions and selects
+the best one at inference time — a new axis alongside the existing
+thinking-mode budget system, distinct from controlling how many tokens
+one generation spends reasoning.
 
 > [!IMPORTANT]
 > This is a source and engineering project. It does not publish crates to
@@ -260,6 +266,7 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
 | [docs/phase42_audio.md](docs/phase42_audio.md) | Audio encoder, mel-spectrogram, fusion, tuning, inference, and audio-QA evaluation |
 | [docs/phase43_sparse_moe.md](docs/phase43_sparse_moe.md) | Sparse/grouped dispatch design, CPU/CUDA honesty, and equivalence proof |
 | [docs/phase44_multi_node.md](docs/phase44_multi_node.md) | Multi-node topology, TCP rendezvous, single-retry fault policy, and validation paths |
+| [docs/phase45_test_time.md](docs/phase45_test_time.md) | Best-of-N, self-consistency, verifier, and process-reward selection at inference time |
 | [RELEASE.md](RELEASE.md) | Source-release process and artifact policy |
 | [CHANGELOG.md](CHANGELOG.md) | Versioned implementation history |
 
@@ -268,6 +275,8 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
 - No pretrained model, GGUF, adapter, or binary ships — you train your own.
 - MoE uses dense masked dispatch on CPU (sparse dispatch is CUDA-only, Phase 43).
   Multi-node training is data-parallel only (Phase 44), not model/pipeline-parallel.
+  Test-time compute scaling (Phase 45) is text-only and ships a heuristic
+  process-reward scorer plus a trait for a future trained head.
 - Tool chains are generated and orchestrated but never executed by the runtime.
 - Video is visual-only H.264 MP4; audio is WAV PCM only (no MP3/FLAC/Ogg).
 - Documents are pixel-based (no OCR/table parser).
@@ -290,7 +299,7 @@ reproducible bugs and scoped feature requests. Report vulnerabilities through
   author  = {Aarambh Dev Hub},
   year    = {2026},
   url     = {https://github.com/AarambhDevHub/aarambh-studio},
-  version = {4.0.0-alpha.4},
+  version = {4.0.0-alpha.5},
   license = {Apache-2.0}
 }
 ```

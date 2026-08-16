@@ -1,0 +1,52 @@
+dataset_path = "data/tiny_shakespeare.txt"
+tokenizer_save_path = "checkpoints/best_of_n_smoke/tokenizer.json"
+vocab_size = 8000
+validation_split = 0.01
+shuffle = true
+resume = false
+device = "cpu"
+
+[model]
+vocab_size = 8000
+hidden_dim = 128
+ffn_dim = 256
+n_layers = 2
+n_heads = 2
+n_kv_heads = 1
+max_seq_len = 64
+rope_theta = 10000.0
+norm_eps = 0.00001
+tie_embeddings = true
+
+[train]
+lr = 0.001
+batch_size = 1
+grad_accum_steps = 4
+max_epochs = 1
+max_steps = 8
+warmup_steps = 4
+min_lr_ratio = 0.1
+weight_decay = 0.1
+beta1 = 0.9
+beta2 = 0.95
+epsilon = 0.00000001
+clip_grad_norm = 1.0
+save_every_n_steps = 0
+log_every_n_steps = 4
+eval_steps = 0
+seed = 42
+checkpoint_dir = "checkpoints/best_of_n_smoke"
+
+# Phase 45 test-time compute scaling. This CPU smoke config trains the tiny
+# Shakespeare model so the smoke script has a checkpoint to run best-of-N
+# inference against. The best-of-N surface is exercised via CLI flags on
+# `infer` and `eval` (not a TOML section), per the roadmap:
+#
+#   infer --best-of-n <N> --selection verifier|self-consistency|majority|process-reward
+#   eval  --best-of-n <N> --best-of-n-selection <strategy>
+#
+# The four roadmap-named acceptance tests live in the inference and eval
+# crate unit-test suites (run by scripts/phase45_smoke.sh). The smoke run
+# validates the CLI plumbing end-to-end on CPU: a tiny trained checkpoint,
+# N=2 self-consistency generation, and an eval scorecard carrying the
+# single-sample vs best-of-N accuracy delta in its details map.

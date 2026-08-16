@@ -2,6 +2,97 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0-alpha.5] - 2026-08-16
+
+### Added
+
+- **Phase 45 — Test-Time Compute Scaling:** Adds a genuinely new
+  inference-time axis, distinct from the thinking engine (v1 §7):
+  instead of controlling how many tokens *one* generation spends
+  reasoning, this phase generates *multiple candidate completions* and
+  selects among them — the Best-of-N / self-consistency /
+  verifier-guided-selection pattern that sits alongside, not inside, the
+  existing thinking-mode budget system. The two compose freely: each of
+  the N candidates can itself use any thinking mode.
+  - New `SelectionStrategy` enum (`aarambh-studio-inference`):
+    `Verifier | SelfConsistency | Majority | ProcessReward`. The first
+    three are the roadmap-named strategies for verifiable tasks; `ProcessReward`
+    is the open-ended-task fallback from ARCHITECTURE_V4 §59.
+  - New `CompletionVerifier` trait (`aarambh-studio-inference`): local to
+    the inference crate so it does not depend on the finetune crate that
+    owns `Verifier` / `MathVerifier` / `CodeVerifier` — the CLI binary
+    provides a thin `MathVerifierAdapter` at the call site, preserving the
+    existing architectural layering.
+  - New `BestOfNConfig`, `BestOfNEngine`, `BestOfNOutput`,
+    `SelectionRationale` (`aarambh-studio-inference`): `BestOfNEngine`
+    wraps an `InferenceEngine` and reuses `prepare_session` +
+    `fork_with_config` + `decode_sessions` so the prompt KV-cache is
+    prefilled once and the N forks are decoded together in one batched
+    target forward pass. Candidate 0 inherits the input sampler's seed
+    unchanged (N=1 reproduces single-sample byte-for-byte); candidates
+    1..N are re-seeded `base_seed + i`. The wrapper-struct approach leaves
+    `GenerationConfig` and the `serve` crate untouched — best-of-N is a
+    CLI/eval surface only, per the roadmap's explicit scope.
+  - New `self_consistency` module (`aarambh-studio-inference`):
+    `extract_final_number` (byte-identical re-declaration of
+    `aarambh_studio_finetune::extract_final_number`, attributed, so no
+    cross-crate dependency), `extract_final_answer` (number or last
+    non-empty trimmed line), `majority_vote` (first-occurrence
+    tie-breaking), and `self_consistency_select`.
+  - New `process_reward` module (`aarambh-studio-inference`):
+    `ProcessRewardScorer` trait, `HeuristicProcessRewardScorer`
+    (transparent structural scorer: rewards a non-empty thinking block, a
+    final-answer marker, a parsable numeric answer, and a non-trivial step
+    count), and `ProcessRewardHead` (placeholder for a future trained
+    head; `load_process_reward_head` returns `AarambhError::Unsupported`
+    until a checkpoint exists — no trained checkpoint ships, per the
+    release audit).
+  - New eval-harness surface (`aarambh-studio-eval`): `best_of_n_generate`,
+    `sample_generate`, `BestOfNOptions`, `BestOfNResult`, `VerifierFn`
+    type alias in `generation.rs`; `best_of_n`, `best_of_n_selection`,
+    `best_of_n_seed` fields on `EvalConfig`. When `best_of_n` is set, the
+    `gsm8k_subset` and `humaneval_lite` tasks compute both single-sample
+    and best-of-N accuracy and record `single_sample_accuracy`,
+    `best_of_n_accuracy`, and `best_of_n_delta` in their
+    `TaskScore::details` map — the scorecard is the source of truth for
+    whether best-of-N actually helped, never asserted in prose.
+  - New CLI flags: `infer --best-of-n <N> --selection
+    verifier|self-consistency|majority|process-reward [--ground-truth
+    <answer>]`; `eval --best-of-n <N> --best-of-n-selection <strategy>
+    --best-of-n-seed <u64>`. Best-of-N is text-only: combining
+    `--best-of-n` with `--image` / `--video` / `--document` / `--audio` /
+    `--tools` returns `AarambhError::Unsupported` (mirrors
+    `fork_with_config`'s no-tools constraint).
+  - New config: `configs/best_of_n_smoke.toml` (CPU smoke training config
+    that produces a checkpoint the smoke script runs best-of-N inference
+    against; the best-of-N surface is CLI-flag-driven, not a TOML section,
+    per the roadmap); new script `scripts/phase45_smoke.sh`; new doc
+    `docs/phase45_test_time.md`.
+  - Tests (CPU, no cuda, 13 total across the inference and eval crates):
+    `best_of_n_with_n_equal_one_matches_single_sample_generation_exactly`
+    (N=1 backward compat),
+    `self_consistency_majority_vote_selects_the_most_common_final_answer`,
+    `process_reward_score_correlates_positively_with_verifier_score_on_labelled_holdout`
+    (synthetic labelled holdout constructed inline, no external fixture),
+    `best_of_n_accuracy_on_gsm8k_subset_is_measured_not_assumed_to_improve`
+    (asserts the delta is *reported* in the scorecard, not that it
+    improved), plus supporting tests for re-seeding, greedy degeneracy,
+    verifier selection, answer extraction, tie-breaking, PR heuristic
+    monotonicity, strategy parsing, and config validation.
+
+### Honesty note on hardware and scope
+
+i3 supports small N (2–4) for text tasks; larger N is Kaggle-scoped for
+cost reasons, following v1 §12's existing i3 self-learning N-completion
+budget precedent. Whether best-of-N improves accuracy on a given task is
+measured by the eval-harness scorecard, not asserted in prose — different
+tasks and selection strategies are expected to show different, sometimes
+negligible, deltas. The process-reward scorer ships as a transparent
+heuristic plus a trait for a future trained head; the trained head is
+explicitly future work (returns `AarambhError::Unsupported`, not
+`todo!()`), and no trained checkpoint ships. Best-of-N is text-only in
+Phase 45; multimodal best-of-N is future work, not a half-implementation.
+
 ## [4.0.0-alpha.4] - 2026-08-16
 
 ### Added

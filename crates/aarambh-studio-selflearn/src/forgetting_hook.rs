@@ -141,6 +141,9 @@ impl ForgettingHook {
             agent_max_steps: self.config.agent_max_steps,
             allow_code_exec: self.config.allow_code_exec,
             thinking_mode: aarambh_studio_inference::ThinkingMode::None,
+            best_of_n: None,
+            best_of_n_selection: aarambh_studio_inference::SelectionStrategy::SelfConsistency,
+            best_of_n_seed: 0,
             model_path: Some(format!("live-selflearn-step-{}", online_grpo.step_count())),
             tokenizer_path: None,
             config_path: self

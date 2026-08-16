@@ -8,11 +8,12 @@ use aarambh_studio_audio::{
     FrozenAudioEncoder, interleave_audio_tokens,
 };
 use aarambh_studio_core::{AarambhError, TokenizerLike};
-use aarambh_studio_finetune::{Verifier, VerifierKind};
+use aarambh_studio_finetune::{MathVerifier, Verifier, VerifierKind};
 use aarambh_studio_inference::{
-    GenerationConfig, GenerationOutput, GenerationPhase, GenerationStep, InferenceEngine,
-    MtpSpeculativeEngine, Sampler, SpeculativeConfig, SpeculativeEngine, ThinkingMode,
-    ToolCallingConfig, ToolChoice, ToolDefinition,
+    BestOfNConfig, BestOfNEngine, CompletionVerifier, GenerationConfig, GenerationOutput,
+    GenerationPhase, GenerationStep, HeuristicProcessRewardScorer, InferenceEngine,
+    MtpSpeculativeEngine, Sampler, SelectionStrategy, SpeculativeConfig, SpeculativeEngine,
+    ThinkingMode, ToolCallingConfig, ToolChoice, ToolDefinition,
 };
 use aarambh_studio_safety::{
     SafeResponse, SafeStreamEvent, SafetyGenerator, SafetyGuard, SafetyMode, SafetyPolicy,
@@ -143,6 +144,18 @@ pub struct InferArgs {
     pub forgetting_require_all_probes: bool,
     #[arg(long)]
     pub forgetting_baseline_id: Option<String>,
+    /// Generate N independent candidate completions and select the best one
+    /// (Phase 45). When set, requires a stochastic sampler (use --temperature
+    /// > 0 or --top-k/--top-p) for N > 1; greedy best-of-N is degenerate.
+    #[arg(long)]
+    pub best_of_n: Option<usize>,
+    /// Selection strategy for best-of-N: verifier, self-consistency, majority,
+    /// or process-reward (Phase 45). Defaults to self-consistency.
+    #[arg(long, default_value = "self-consistency")]
+    pub selection: String,
+    /// Ground-truth answer required when --selection verifier is used (Phase 45).
+    #[arg(long)]
+    pub ground_truth: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -195,6 +208,19 @@ pub fn run(args: InferArgs) -> anyhow::Result<()> {
     } else {
         prompt_for_mode(&args.prompt, thinking_mode)
     };
+    if args.best_of_n.is_some() {
+        return run_best_of_n_infer(
+            &args,
+            &run_config,
+            model_path,
+            tokenizer_path,
+            device,
+            dtype,
+            config,
+            prompt,
+            thinking_mode,
+        );
+    }
     if args.speculative {
         return run_speculative_infer(
             &args,
@@ -380,6 +406,119 @@ pub fn run(args: InferArgs) -> anyhow::Result<()> {
     eprintln!("finish_reason={:?}", output.finish_reason);
     if args.stats {
         print_generation_stats("target", &output, elapsed, &run_config);
+    }
+    Ok(())
+}
+
+/// Adapter wrapping `aarambh_studio_finetune::MathVerifier` into the
+/// inference crate's [`CompletionVerifier`] trait, so the inference crate
+/// does not depend on the finetune crate (Phase 45).
+#[derive(Debug, Clone, Copy, Default)]
+struct MathVerifierAdapter {
+    verifier: MathVerifier,
+}
+
+impl CompletionVerifier for MathVerifierAdapter {
+    fn extract_answer(&self, completion: &str) -> Option<String> {
+        aarambh_studio_inference::extract_final_number(completion).map(|n| n.to_string())
+    }
+    fn verify(&self, completion: &str, ground_truth: &str) -> f32 {
+        self.verifier.score(completion, ground_truth)
+    }
+}
+
+fn parse_selection_strategy(value: &str) -> anyhow::Result<SelectionStrategy> {
+    use std::str::FromStr;
+    SelectionStrategy::from_str(value).map_err(anyhow::Error::msg)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_best_of_n_infer(
+    args: &InferArgs,
+    run_config: &TrainingRunConfig,
+    model_path: PathBuf,
+    tokenizer_path: PathBuf,
+    device: candle_core::Device,
+    dtype: candle_core::DType,
+    generation_config: GenerationConfig,
+    prompt: String,
+    thinking_mode: ThinkingMode,
+) -> anyhow::Result<()> {
+    if args.image.is_some()
+        || args.video.is_some()
+        || args.document.is_some()
+        || args.audio.is_some()
+    {
+        return Err(AarambhError::Unsupported(
+            "best-of-N is text-only; --image/--video/--document/--audio are not supported with --best-of-n".into(),
+        )
+        .into());
+    }
+    if args.tools.is_some() {
+        return Err(AarambhError::Unsupported(
+            "best-of-N does not support tool-calling prompts".into(),
+        )
+        .into());
+    }
+    let n = args.best_of_n.expect("validated: --best-of-n is set");
+    let strategy = parse_selection_strategy(&args.selection)?;
+    let base_seed = args.seed.unwrap_or(0);
+    let mut best_of_n_config = BestOfNConfig::new(n, strategy)?.with_base_seed(base_seed);
+    match strategy {
+        SelectionStrategy::Verifier => {
+            let ground_truth = args.ground_truth.clone().ok_or_else(|| {
+                AarambhError::Config("--selection verifier requires --ground-truth <answer>".into())
+            })?;
+            best_of_n_config = best_of_n_config
+                .with_verifier(Box::new(MathVerifierAdapter::default()))
+                .with_ground_truth(ground_truth);
+        }
+        SelectionStrategy::ProcessReward => {
+            best_of_n_config =
+                best_of_n_config.with_process_reward(Box::new(HeuristicProcessRewardScorer::new()));
+        }
+        SelectionStrategy::SelfConsistency | SelectionStrategy::Majority => {}
+    }
+    if !generation_config.sampler.is_deterministic() && n > 1 {
+        eprintln!(
+            "best-of-N with N={n} stochastic sampler (seed={base_seed}); candidate i uses seed {base_seed}+i"
+        );
+    } else if generation_config.sampler.is_deterministic() && n > 1 {
+        eprintln!(
+            "warning: best-of-N with a greedy sampler produces N identical candidates; \
+             use --temperature > 0 for diverse candidates"
+        );
+    }
+
+    let target = InferenceEngine::from_paths_with_dtype(
+        model_path,
+        &run_config.model,
+        tokenizer_path,
+        device,
+        dtype,
+    )?;
+    let mut engine = BestOfNEngine::new(target, best_of_n_config)?;
+    let started = Instant::now();
+    let output = engine.generate(&prompt, generation_config)?;
+    let elapsed = started.elapsed();
+
+    print_generation_output(&output.chosen, thinking_mode)?;
+    io::stdout().flush()?;
+    eprintln!("finish_reason={:?}", output.chosen.finish_reason);
+    eprintln!(
+        "selection={strategy} chosen_index={} candidates={}",
+        output.chosen_index,
+        output.candidates.len()
+    );
+    if args.stats {
+        print_generation_stats("best-of-n-chosen", &output.chosen, elapsed, run_config);
+        for (index, candidate) in output.candidates.iter().enumerate() {
+            eprintln!(
+                "  candidate[{index}] tokens={} finish={:?}",
+                candidate.token_ids.len(),
+                candidate.finish_reason
+            );
+        }
     }
     Ok(())
 }
@@ -2389,6 +2528,9 @@ mod tests {
             forgetting_allow_code_exec: false,
             forgetting_require_all_probes: false,
             forgetting_baseline_id: None,
+            best_of_n: None,
+            selection: "self-consistency".into(),
+            ground_truth: None,
         }
     }
 

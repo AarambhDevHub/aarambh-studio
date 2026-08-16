@@ -22,7 +22,9 @@ pub use forgetting::{
     ProbeManifest, ProbeSkip, RoutingDrift, RoutingSignature, run_capability_probes,
     tokenizer_fingerprint,
 };
-pub use generation::greedy_generate;
+pub use generation::{
+    BestOfNOptions, BestOfNResult, best_of_n_generate, greedy_generate, sample_generate,
+};
 pub use harness::{EvalConfig, EvalContext, EvalTask, run_all};
 pub use ppl::{PplResult, compute_ppl};
 pub use report::{

@@ -174,6 +174,17 @@ router's actual learned behaviour.
 
 ## 45. Test-Time Compute Scaling Inside Self-Learning
 
+> **Status: Verified for v4.0.0-alpha.5 (Phase 45).** The
+> `SelectionStrategy` enum and the `BestOfNEngine` wrapper are implemented
+> (`aarambh-studio-inference`: `best_of_n.rs`, `self_consistency.rs`,
+> `process_reward.rs`); the eval harness records single-sample vs best-of-N
+> accuracy deltas in the scorecard's `details` map via
+> `EvalConfig.best_of_n`. A session may pass a `SelectionStrategy` to the
+> self-learning loop's own N-completion sampling — the loop's replay-entry
+> metadata field that records the strategy is the instrumentation this
+> section describes, left as an open question rather than an asserted
+> learning-outcome claim. See `docs/phase45_test_time.md`.
+
 Test-time compute scaling (`ARCHITECTURE_V4.md` §59) is fundamentally
 an *inference-time* technique — generate N candidates, select one. The
 self-learning loop's existing N-completion sampling
