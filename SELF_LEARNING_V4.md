@@ -281,6 +281,13 @@ inappropriate, the same way any other incorrect proposal would be
 scored low and replayed, rather than the turn being silently dropped
 from the loop.
 
+> **Implemented in v4.0.0-alpha.7.** `crates/aarambh-studio-agent/src/sandbox.rs`
+> ships the closed-world `ToolExecutor` trait, `ToolSandbox`, and
+> `SandboxedToolProvider` (a `ToolResultProvider`), so a self-learning
+> session that enables sandboxed execution uses the exact same allowlist,
+> authorization, timeout, and resource-ceiling boundaries as any other
+> execution path — it is not a privileged or exempted context.
+
 ## 48. Self-Learning With Multi-Agent Orchestration
 
 Extends v3 §33's chain-aware replay pattern one level further. A

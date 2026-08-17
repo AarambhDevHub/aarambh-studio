@@ -746,7 +746,7 @@ and is scoped conservatively on purpose.
 
 **`aarambh-studio-agent`** *(extends the crate v3 §37 already scaffolded for chain orchestration)*:
 ```
-[ ] src/sandbox.rs
+[x] src/sandbox.rs
       ToolExecutor trait — implementors register one specific,
       named capability (e.g. "http_get_whitelisted_domain",
       "read_file_in_workdir") — there is no generic "run shell command"
@@ -756,7 +756,7 @@ and is scoped conservatively on purpose.
       Every execution wrapped with an explicit timeout and a resource
       ceiling (memory, CPU, wall-clock) — a runaway or hung tool call
       is killed, not allowed to block the chain indefinitely
-[ ] src/authorization.rs
+[x] src/authorization.rs
       Per-tool authorization is an operator decision, not a model
       decision — the model can request execution of anything in its
       declared tool schema, but only tools the operator has explicitly
@@ -766,10 +766,10 @@ and is scoped conservatively on purpose.
 
 **Composability:**
 ```
-[ ] Execution happens only after the grammar-constrained JSON (v2 §30)
+[x] Execution happens only after the grammar-constrained JSON (v2 §30)
     validates cleanly against the declared schema — malformed or
     partially-streamed tool calls are never executed
-[ ] Execution results re-enter the chain via the existing
+[x] Execution results re-enter the chain via the existing
     ToolResult/result_ingestion.rs path from v3 §46 — no new ingestion
     mechanism, execution is additive to what v3 already built
 ```
@@ -801,11 +801,32 @@ A whitelisted, sandboxed tool (e.g. a read-only file lookup within a
 fixed working directory) executes correctly end-to-end inside a
 multi-step chain, with every safety boundary (allowlist, timeout,
 resource cap) independently tested and verified to fail closed, not
-open, under every tested failure condition.
+open, under every tested failure condition. The 6 roadmap-named
+acceptance tests in aarambh-studio-agent/src/sandbox.rs (plus
+supporting tests) pass; the CLI `agent --execute-tools` path surfaces
+the new flags; scripts/phase47_smoke.sh writes a scorecard.
 
 git commit -m "feat: Phase 47 — sandboxed tool execution"
 git tag v4.0.0-alpha.7
 ```
+
+> **Status: Implemented in v4.0.0-alpha.7.** `crates/aarambh-studio-agent`
+> ships `src/sandbox.rs` (`ToolExecutor` trait, `ToolSandbox`, `SandboxLimits`,
+> `ExecContext`, `ExecError`, `SandboxedToolProvider`, and the reference
+> `ReadFileInWorkdir` + `StaticLookup` executors) and `src/authorization.rs`
+> (`AuthorizationScope`, with `intersect` for Phase 48 sub-agent scope
+> narrowing). Execution is closed-world (registered executor + declared
+> schema), operator-authorized, schema-re-validated, and bounded by a
+> wall-clock timeout (worker thread + `recv_timeout`, cooperative
+> cancellation flag, detached-on-timeout) and output/argument-size ceilings.
+> `SandboxedToolProvider` implements `ToolResultProvider`, so execution plugs
+> into the existing `ToolChain` with zero chain changes — results re-enter via
+> the unchanged `result_ingestion` path. The CLI `agent --execute-tools`
+> flag (with `--allow-tool`, `--exec-timeout-ms`, `--exec-max-output-bytes`,
+> `--exec-workdir`) wires the operator's authorization. See
+> `docs/phase47_sandbox.md` and `scripts/phase47_smoke.sh`. No new crate and
+> no new dependency were added (std `thread`/`sync`/`mpsc` + existing
+> `serde`/`thiserror` only); the release audit's 20-package invariant holds.
 
 ---
 
