@@ -48,100 +48,148 @@ const ANSI_DIM: &str = "\x1b[2m";
 const ANSI_RESET: &str = "\x1b[0m";
 
 #[derive(Debug, Args)]
+/// Generate text, multimodal, tool-use, speculative, best-of-N, or
+/// self-learning completions from a trained checkpoint.
 pub struct InferArgs {
+    /// Training/model TOML configuration (provides architecture + device).
     #[arg(long, default_value = "configs/tiny_shakespeare.toml")]
     pub config: PathBuf,
+    /// Model checkpoint path; falls back to best.json/latest.json pointer.
     #[arg(long)]
     pub model: Option<PathBuf>,
+    /// Optional tokenizer JSON path; falls back to the configured tokenizer.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// Image file path for vision (VQA) inference.
     #[arg(long)]
     pub image: Option<PathBuf>,
+    /// Video file path for temporal video inference (mutually exclusive with --image).
     #[arg(long, conflicts_with = "image")]
     pub video: Option<PathBuf>,
+    /// Document file path for layout-aware document inference.
     #[arg(long, conflicts_with_all = ["image", "video"])]
     pub document: Option<PathBuf>,
+    /// Audio file path for audio-language inference.
     #[arg(long, conflicts_with_all = ["image", "video", "document"])]
     pub audio: Option<PathBuf>,
+    /// Comma-separated 1-based page numbers to rasterise from the document.
     #[arg(long, requires = "document")]
     pub pages: Option<String>,
+    /// DPI used when rasterising document pages to images.
     #[arg(long, requires = "document")]
     pub document_dpi: Option<u32>,
+    /// Maximum number of document pages to rasterise.
     #[arg(long, requires = "document")]
     pub max_document_pages: Option<usize>,
+    /// Number of frames to sample from a --video input.
     #[arg(long)]
     pub frames: Option<usize>,
+    /// Frame sampling strategy for --video: uniform or scene-aware.
     #[arg(long)]
     pub frame_sampling: Option<String>,
+    /// Prompt text (or chat-template user message) fed to the model.
     #[arg(long)]
     pub prompt: String,
+    /// Maximum number of new tokens generated.
     #[arg(long, default_value_t = 256)]
     pub max_tokens: usize,
+    /// Sampling temperature for stochastic decoding.
     #[arg(long, default_value_t = 0.7)]
     pub temperature: f32,
+    /// Nucleus sampling probability mass.
     #[arg(long, default_value_t = 0.9)]
     pub top_p: f32,
+    /// Top-k sampling width.
     #[arg(long, default_value_t = 50)]
     pub top_k: usize,
+    /// Deterministic sampler seed.
     #[arg(long)]
     pub seed: Option<u64>,
     #[arg(long, default_value = "none")]
     /// Thinking budget: none, low, medium, high, or max.
     pub thinking: String,
+    /// Render the live next-token prediction view to stdout.
     #[arg(long)]
     pub predict_view: bool,
+    /// Stream tokens to stdout as they are generated.
     #[arg(long)]
     pub stream: bool,
+    /// Use greedy (argmax) decoding instead of stochastic sampling.
     #[arg(long)]
     pub greedy: bool,
+    /// Enable speculative decoding with an external draft model or MTP head.
     #[arg(long)]
     pub speculative: bool,
+    /// External draft model checkpoint path (requires --draft-config).
     #[arg(long)]
     pub draft_model: Option<PathBuf>,
+    /// External draft model TOML config path.
     #[arg(long)]
     pub draft_config: Option<PathBuf>,
+    /// External draft model tokenizer JSON path (defaults to the target).
     #[arg(long)]
     pub draft_tokenizer: Option<PathBuf>,
+    /// Number of tokens the draft model proposes per target forward (MTP width).
     #[arg(long)]
     pub draft_tokens: Option<usize>,
+    /// Print generation, DSA, and MoE statistics to stderr after decoding.
     #[arg(long)]
     pub stats: bool,
+    /// JSON tool definitions file (native or OpenAI-compatible) for tool calling.
     #[arg(long)]
     pub tools: Option<PathBuf>,
+    /// Tool-choice policy: auto, none, required, or a named tool.
     #[arg(long, default_value = "auto")]
     pub tool_choice: String,
+    /// Safety policy: strict, permissive, research, or none.
     #[arg(long, default_value = "strict")]
     pub safety: String,
+    /// JSONL safety audit log path.
     #[arg(long, default_value = "safety_audit.jsonl")]
     pub safety_audit_log: PathBuf,
+    /// Self-learning mode: disabled, cpu, or gpu.
     #[arg(long, default_value = "disabled")]
     pub self_learn: String,
+    /// Self-learning replay JSONL path (defaults to data/replay.jsonl).
     #[arg(long)]
     pub replay_path: Option<PathBuf>,
+    /// Self-learning state directory for adapters and metrics.
     #[arg(long, default_value = "adapters/selflearn")]
     pub self_learn_state_dir: PathBuf,
+    /// Reference (frozen) checkpoint used for KL during self-learning.
     #[arg(long)]
     pub self_learn_reference: Option<PathBuf>,
+    /// Built-in verifier kind: none, math, format, or math-format.
     #[arg(long, default_value = "none")]
     pub self_learn_verifier: String,
+    /// Grounded vision verifier: none, auto, count, color, presence, or exact.
     #[arg(long, default_value = "none")]
     pub self_learn_vision_verifier: String,
+    /// Ground-truth answer required when a verifier other than none is used.
     #[arg(long)]
     pub self_learn_ground_truth: Option<String>,
+    /// Capability probe manifest path (enables self-learning forgetting analysis).
     #[arg(long)]
     pub forgetting_manifest: Option<PathBuf>,
+    /// Forgetting curves store path (defaults to <state-dir>/forgetting_curves.json).
     #[arg(long)]
     pub forgetting_store: Option<PathBuf>,
+    /// Optional JSONL export path for self-learning forgetting deltas.
     #[arg(long)]
     pub forgetting_jsonl: Option<PathBuf>,
+    /// Absolute capability-score delta treated as significant forgetting.
     #[arg(long, default_value_t = 0.02)]
     pub forgetting_threshold: f64,
+    /// Maximum examples evaluated per capability probe during forgetting checks.
     #[arg(long, default_value_t = 8)]
     pub forgetting_max_examples: usize,
+    /// Allow code execution in capability probes during forgetting checks.
     #[arg(long)]
     pub forgetting_allow_code_exec: bool,
+    /// Require every manifest probe to run; otherwise missing probes are skipped.
     #[arg(long)]
     pub forgetting_require_all_probes: bool,
+    /// Baseline checkpoint or session id used to compute forgetting deltas.
     #[arg(long)]
     pub forgetting_baseline_id: Option<String>,
     /// Generate N independent candidate completions and select the best one

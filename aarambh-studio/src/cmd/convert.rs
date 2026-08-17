@@ -11,21 +11,30 @@ use aarambh_studio_weights::{
 use clap::Args;
 
 #[derive(Debug, Args)]
+/// Convert checkpoints between HF SafeTensors and GGUF, or expand vocabularies.
 pub struct ConvertArgs {
+    /// Training/model TOML configuration (provides architecture + device).
     #[arg(long, default_value = "configs/tiny_shakespeare.toml")]
     pub config: PathBuf,
+    /// Source checkpoint path to convert.
     #[arg(long)]
     pub input: PathBuf,
+    /// Output converted checkpoint path.
     #[arg(long)]
     pub output: PathBuf,
+    /// HF architecture family: llama3 (used for HF -> SafeTensors migration).
     #[arg(long, default_value = "llama3")]
     pub arch: String,
+    /// Emit a GGUF checkpoint instead of native SafeTensors.
     #[arg(long)]
     pub gguf: bool,
+    /// GGUF quantisation format: q4_k_m, q5_k_m, or q8_0.
     #[arg(long, default_value = "q4_k_m")]
     pub format: String,
+    /// Expand the SafeTensors model with the Phase 35 video vocabulary.
     #[arg(long, requires = "tokenizer", requires = "output_tokenizer")]
     pub upgrade_video_vocab: bool,
+    /// Expand the SafeTensors model with the Phase 36 document vocabulary.
     #[arg(
         long,
         requires = "tokenizer",
@@ -33,6 +42,7 @@ pub struct ConvertArgs {
         conflicts_with = "upgrade_video_vocab"
     )]
     pub upgrade_document_vocab: bool,
+    /// Expand the SafeTensors model with the Phase 42 audio vocabulary.
     #[arg(
         long,
         requires = "tokenizer",
@@ -40,8 +50,10 @@ pub struct ConvertArgs {
         conflicts_with_all = ["upgrade_video_vocab", "upgrade_document_vocab"]
     )]
     pub upgrade_audio_vocab: bool,
+    /// Source tokenizer JSON path (required for vocabulary upgrades).
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// Output tokenizer JSON path for the upgraded vocabulary.
     #[arg(long)]
     pub output_tokenizer: Option<PathBuf>,
 }

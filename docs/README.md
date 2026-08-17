@@ -70,6 +70,16 @@ existing `ToolChain`, the reference `read_file_in_workdir` and `lookup`
 executors, the `agent --execute-tools` CLI surface, the smoke workflow,
 and the honesty boundary (pure-Rust CPU sandbox, no OS-level isolation).
 
+### 4c. `cli-commands.md`
+**The full CLI command reference — every command, every flag, a worked example for each.**
+
+This is a human-readable index over every subcommand's `--help` output
+(generated for `4.0.0-alpha.7`): `train`, `infer`, `agent` (incl. the
+Phase 47 `--execute-tools` sandboxed-execution flags), `eval`, `quantise`,
+`convert`, `finetune` (all subcommands incl. `rlaif`), `distill`,
+`selflearn`, and `serve`. The verbatim `--help` output for every command
+is also kept in `cli-commands-raw-help.txt` as an appendix.
+
 ### 5. `phase38_forgetting.md`
 **Capability regression, MoE routing drift, and the Manas JSONL bridge.**
 

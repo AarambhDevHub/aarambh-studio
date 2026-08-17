@@ -12,21 +12,30 @@ use candle_core::{Device, Tensor};
 use clap::Args;
 
 #[derive(Debug, Args)]
+/// Quantise a trained checkpoint into a smaller GGUF format.
 pub struct QuantiseArgs {
+    /// Training/model TOML configuration (provides architecture + device).
     #[arg(long, default_value = "configs/tiny_shakespeare.toml")]
     pub config: PathBuf,
+    /// Source model checkpoint path to quantise.
     #[arg(long)]
     pub model: PathBuf,
+    /// Optional tokenizer JSON path; falls back to the configured tokenizer.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// Quantisation method: int8, awq, gptq, q4_k_m, q5_k_m, or q8_0.
     #[arg(long, default_value = "int8")]
     pub method: String,
+    /// Target quantisation bit width (4 for awq/gptq, 5 for q5_k_m, 8 for int8/q8_0).
     #[arg(long, default_value_t = 8)]
     pub bits: u8,
+    /// Calibration plaintext dataset path (required for awq and gptq).
     #[arg(long)]
     pub calibration_data: Option<PathBuf>,
+    /// Maximum calibration samples to draw from the dataset.
     #[arg(long, default_value_t = 128)]
     pub samples: usize,
+    /// Output quantised GGUF checkpoint path.
     #[arg(long)]
     pub output: PathBuf,
 }

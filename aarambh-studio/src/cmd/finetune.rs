@@ -19,6 +19,7 @@ use aarambh_studio_weights::load_any_model;
 use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
+/// Fine-tune adapters with SFT, DoRA, GRPO, DPO, RLAIF, or merge.
 pub struct FinetuneArgs {
     #[command(subcommand)]
     pub command: FinetuneCommand,
@@ -26,183 +27,277 @@ pub struct FinetuneArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum FinetuneCommand {
+    /// Supervised fine-tune a LoRA adapter on a chat dataset.
     Sft(FinetuneRunArgs),
+    /// Supervised fine-tune a QLoRA adapter on a chat dataset.
     Qlora(FinetuneRunArgs),
+    /// Supervised fine-tune a LoRA adapter on a tool-calling dataset.
     ToolSft(FinetuneRunArgs),
+    /// Supervised fine-tune a QLoRA adapter on a tool-calling dataset.
     ToolQlora(FinetuneRunArgs),
+    /// Supervised fine-tune a weight-decomposed DoRA adapter.
     Dora(FinetuneRunArgs),
+    /// Supervised fine-tune a quantised weight-decomposed QDoRA adapter.
     Qdora(FinetuneRunArgs),
+    /// DoRA fine-tune a vision-language adapter on image VQA data.
     VlmDora(VlmFinetuneArgs),
+    /// QDoRA fine-tune a vision-language adapter on image VQA data.
     VlmQdora(VlmFinetuneArgs),
+    /// DoRA fine-tune a vision-language adapter on video VQA data.
     VideoDora(VlmFinetuneArgs),
+    /// QDoRA fine-tune a vision-language adapter on video VQA data.
     VideoQdora(VlmFinetuneArgs),
+    /// DoRA fine-tune a vision-language adapter on document VQA data.
     DocumentDora(VlmFinetuneArgs),
+    /// QDoRA fine-tune a vision-language adapter on document VQA data.
     DocumentQdora(VlmFinetuneArgs),
+    /// DoRA fine-tune a vision-language adapter on audio VQA data.
     AudioDora(VlmFinetuneArgs),
+    /// QDoRA fine-tune a vision-language adapter on audio VQA data.
     AudioQdora(VlmFinetuneArgs),
+    /// Group-relative policy optimisation (verifier-rewarded RL fine-tune).
     Grpo(GrpoArgs),
+    /// Direct preference optimisation against (chosen, rejected) pairs.
     Dpo(DpoArgs),
+    /// Direct preference optimisation against (chosen, rejected) pairs on a quantised base.
     Qdpo(DpoArgs),
     Rlaif(RlaifArgs),
+    /// Merge a trained adapter back into the base checkpoint.
     Merge(MergeArgs),
 }
 
 #[derive(Debug, Args)]
+/// `finetune sft|qlora|tool-sft|tool-qlora|dora|qdora` shared arguments.
 pub struct FinetuneRunArgs {
+    /// Training/model TOML configuration (provides architecture + device).
     #[arg(long, default_value = "configs/tiny_shakespeare.toml")]
     pub config: PathBuf,
+    /// Base model checkpoint path to fine-tune.
     #[arg(long)]
     pub base: PathBuf,
+    /// Optional tokenizer JSON path; falls back to the config.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// JSONL chat or tool-call training data path.
     #[arg(long)]
     pub data: PathBuf,
+    /// Output adapter directory.
     #[arg(long)]
     pub output: PathBuf,
+    /// LoRA / DoRA adapter rank.
     #[arg(long, default_value_t = 16)]
     pub lora_rank: usize,
+    /// LoRA / DoRA scaling alpha; defaults to 2 * rank.
     #[arg(long)]
     pub lora_alpha: Option<f64>,
+    /// LoRA / DoRA dropout probability.
     #[arg(long, default_value_t = 0.05)]
     pub lora_dropout: f32,
+    /// Comma-separated target module list (e.g. attn.wq,attn.wk,attn.wv,attn.wo).
     #[arg(long, default_value = "attn.wq,attn.wk,attn.wv,attn.wo")]
     pub target_modules: String,
+    /// Training batch size.
     #[arg(long)]
     pub batch_size: Option<usize>,
+    /// Maximum optimiser steps (overrides max-epochs when set).
     #[arg(long)]
     pub max_steps: Option<usize>,
+    /// Maximum training epochs.
     #[arg(long)]
     pub max_epochs: Option<usize>,
+    /// Learning rate.
     #[arg(long)]
     pub lr: Option<f64>,
+    /// Gradient accumulation steps before an optimiser update.
     #[arg(long)]
     pub grad_accum_steps: Option<usize>,
+    /// Linear warmup steps before the cosine schedule.
     #[arg(long)]
     pub warmup_steps: Option<usize>,
+    /// Save an adapter every N optimiser steps.
     #[arg(long)]
     pub save_every_n_steps: Option<usize>,
+    /// Log training metrics every N optimiser steps.
     #[arg(long)]
     pub log_every_n_steps: Option<usize>,
+    /// Disable dataset shuffling between epochs.
     #[arg(long)]
     pub no_shuffle: bool,
 }
 
 #[derive(Debug, Args)]
+/// `finetune merge` — fold an adapter back into the base checkpoint.
 pub struct MergeArgs {
+    /// Training/model TOML configuration (provides architecture + device).
     #[arg(long, default_value = "configs/tiny_shakespeare.toml")]
     pub config: PathBuf,
+    /// Base model checkpoint path.
     #[arg(long)]
     pub base: PathBuf,
+    /// Adapter directory to merge.
     #[arg(long)]
     pub adapter: PathBuf,
+    /// Output merged checkpoint path.
     #[arg(long)]
     pub output: PathBuf,
+    /// Merge method: auto (infer from metadata), lora, or dora.
     #[arg(long, default_value = "auto")]
     pub method: String,
 }
 
 #[derive(Debug, Args)]
+/// `finetune grpo` — verifier-rewarded group-relative policy optimisation.
 pub struct GrpoArgs {
+    /// Training/model TOML configuration (provides architecture + device).
     #[arg(long, default_value = "configs/tiny_shakespeare.toml")]
     pub config: PathBuf,
+    /// Base policy checkpoint path.
     #[arg(long)]
     pub base: PathBuf,
+    /// Frozen reference checkpoint used for the KL penalty.
     #[arg(long)]
     pub reference: PathBuf,
+    /// Optional tokenizer JSON path; falls back to the config.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// Prompts JSONL path.
     #[arg(long)]
     pub data: PathBuf,
+    /// Output adapter directory.
     #[arg(long)]
     pub output: PathBuf,
+    /// Built-in verifier kind: math, format, or math-format.
     #[arg(long, default_value = "math-format")]
     pub verifier: String,
+    /// Number of completions sampled per prompt to form a reward group.
     #[arg(long, default_value_t = 8)]
     pub group_size: usize,
+    /// Maximum new tokens generated per rollout.
     #[arg(long, default_value_t = 128)]
     pub max_new_tokens: usize,
+    /// Sampling temperature for rollouts.
     #[arg(long, default_value_t = 0.8)]
     pub temperature: f32,
+    /// Nucleus sampling probability mass for rollouts.
     #[arg(long, default_value_t = 0.95)]
     pub top_p: f32,
+    /// Top-k sampling width for rollouts.
     #[arg(long, default_value_t = 50)]
     pub top_k: usize,
+    /// GRPO thinking budget: none, low, medium, high, or max.
     #[arg(long, default_value = "low")]
     pub thinking: String,
+    /// LoRA / DoRA adapter rank.
     #[arg(long, default_value_t = 16)]
     pub lora_rank: usize,
+    /// LoRA / DoRA scaling alpha; defaults to 2 * rank.
     #[arg(long)]
     pub lora_alpha: Option<f64>,
+    /// LoRA / DoRA dropout probability.
     #[arg(long, default_value_t = 0.05)]
     pub lora_dropout: f32,
+    /// Comma-separated target module list (e.g. attn.wq,attn.wk,attn.wv,attn.wo).
     #[arg(long, default_value = "attn.wq,attn.wk,attn.wv,attn.wo")]
     pub target_modules: String,
+    /// Maximum optimiser steps (alias: --max-steps).
     #[arg(long, alias = "max-steps")]
     pub steps: Option<usize>,
+    /// Maximum training epochs.
     #[arg(long)]
     pub max_epochs: Option<usize>,
+    /// Learning rate.
     #[arg(long)]
     pub lr: Option<f64>,
+    /// KL penalty coefficient against the reference policy.
     #[arg(long, default_value_t = 0.01)]
     pub kl_coeff: f64,
+    /// Gradient accumulation steps before an optimiser update.
     #[arg(long)]
     pub grad_accum_steps: Option<usize>,
+    /// Linear warmup steps before the cosine schedule.
     #[arg(long)]
     pub warmup_steps: Option<usize>,
+    /// Save an adapter every N optimiser steps.
     #[arg(long)]
     pub save_every_n_steps: Option<usize>,
+    /// Log training metrics every N optimiser steps.
     #[arg(long)]
     pub log_every_n_steps: Option<usize>,
+    /// Disable dataset shuffling between epochs.
     #[arg(long)]
     pub no_shuffle: bool,
 }
 
 #[derive(Debug, Args)]
+/// `finetune dpo` / `finetune qdpo` — direct preference optimisation arguments.
 pub struct DpoArgs {
+    /// Training/model TOML configuration (provides architecture + device).
     #[arg(long, default_value = "configs/tiny_shakespeare.toml")]
     pub config: PathBuf,
+    /// Base policy checkpoint path to fine-tune.
     #[arg(long)]
     pub base: PathBuf,
+    /// Optional frozen reference checkpoint used for the DPO KL term.
     #[arg(long, conflicts_with = "reference_free")]
     pub reference: Option<PathBuf>,
+    /// Run reference-free DPO (skip the frozen reference model).
     #[arg(long, conflicts_with = "reference")]
     pub reference_free: bool,
+    /// Optional tokenizer JSON path; falls back to the config.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// Preference-pair JSONL path (chosen, rejected per row).
     #[arg(long)]
     pub data: PathBuf,
+    /// Output adapter directory.
     #[arg(long)]
     pub output: PathBuf,
+    /// DPO beta (regularisation strength).
     #[arg(long, default_value_t = 0.1)]
     pub beta: f64,
+    /// Maximum tokens kept per prompt half (truncates longer prompts).
     #[arg(long)]
     pub max_prompt_tokens: Option<usize>,
+    /// Maximum tokens kept per chosen/rejected completion.
     #[arg(long)]
     pub max_completion_tokens: Option<usize>,
+    /// LoRA / DoRA adapter rank.
     #[arg(long, default_value_t = 16)]
     pub lora_rank: usize,
+    /// LoRA / DoRA scaling alpha; defaults to 2 * rank.
     #[arg(long)]
     pub lora_alpha: Option<f64>,
+    /// LoRA / DoRA dropout probability.
     #[arg(long, default_value_t = 0.0)]
     pub lora_dropout: f32,
+    /// Comma-separated target module list (e.g. attn.wq,attn.wk,attn.wv,attn.wo).
     #[arg(long, default_value = "attn.wq,attn.wk,attn.wv,attn.wo")]
     pub target_modules: String,
+    /// Training batch size.
     #[arg(long)]
     pub batch_size: Option<usize>,
+    /// Maximum optimiser steps (overrides max-epochs when set).
     #[arg(long)]
     pub max_steps: Option<usize>,
+    /// Maximum training epochs.
     #[arg(long)]
     pub max_epochs: Option<usize>,
+    /// Learning rate.
     #[arg(long)]
     pub lr: Option<f64>,
+    /// Gradient accumulation steps before an optimiser update.
     #[arg(long)]
     pub grad_accum_steps: Option<usize>,
+    /// Linear warmup steps before the cosine schedule.
     #[arg(long)]
     pub warmup_steps: Option<usize>,
+    /// Save an adapter every N optimiser steps.
     #[arg(long)]
     pub save_every_n_steps: Option<usize>,
+    /// Log training metrics every N optimiser steps.
     #[arg(long)]
     pub log_every_n_steps: Option<usize>,
+    /// Disable dataset shuffling between epochs.
     #[arg(long)]
     pub no_shuffle: bool,
 }
@@ -269,74 +364,109 @@ pub struct RlaifArgs {
 }
 
 #[derive(Debug, Args)]
+/// `finetune vlm-dora|vlm-qdora|video-dora|video-qdora|document-dora|document-qdora|audio-dora|audio-qdora`
+/// shared arguments.
 pub struct VlmFinetuneArgs {
+    /// VLM training/model TOML configuration (vision encoder + projector + device).
     #[arg(long, default_value = "configs/vision_vqa_instruct.toml")]
     pub config: PathBuf,
+    /// Base model checkpoint path to fine-tune.
     #[arg(long)]
     pub base: PathBuf,
+    /// Optional tokenizer JSON path; falls back to the config.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// JSONL VQA training data path (image, video, document, or audio rows).
     #[arg(long)]
     pub data: PathBuf,
+    /// Output adapter directory.
     #[arg(long)]
     pub output: PathBuf,
+    /// Pretrained vision projector checkpoint path (defaults to the base).
     #[arg(long)]
     pub projector: Option<PathBuf>,
+    /// CLIP vision encoder config JSON path (defaults to the config).
     #[arg(long)]
     pub clip_config: Option<PathBuf>,
+    /// CLIP vision encoder weights path (defaults to the config).
     #[arg(long)]
     pub clip_weights: Option<PathBuf>,
+    /// Root directory that image training paths are resolved against.
     #[arg(long)]
     pub image_root: Option<PathBuf>,
+    /// Root directory that video training paths are resolved against.
     #[arg(long)]
     pub video_root: Option<PathBuf>,
+    /// Number of frames sampled per video (overrides the config).
     #[arg(long)]
     pub frames: Option<usize>,
+    /// Frame sampling strategy: uniform or scene-aware.
     #[arg(long)]
     pub frame_sampling: Option<String>,
+    /// Temporal encoding kind for video frames.
     #[arg(long)]
     pub temporal_encoding: Option<String>,
+    /// Optional pretrained temporal encoder checkpoint path.
     #[arg(long)]
     pub temporal: Option<PathBuf>,
+    /// Root directory that document training paths are resolved against.
     #[arg(long)]
     pub document_root: Option<PathBuf>,
+    /// DPI used when rasterising document pages to images.
     #[arg(long)]
     pub document_dpi: Option<u32>,
+    /// Maximum number of document pages to rasterise per row.
     #[arg(long)]
     pub max_document_pages: Option<usize>,
+    /// Layout encoding kind for document pages.
     #[arg(long)]
     pub layout_encoding: Option<String>,
+    /// Optional pretrained layout-aware projector checkpoint path.
     #[arg(long)]
     pub layout: Option<PathBuf>,
+    /// Freeze the vision projector during fine-tuning.
     #[arg(long)]
     pub freeze_projector: bool,
+    /// LoRA / DoRA adapter rank.
     #[arg(long, default_value_t = 16)]
     pub lora_rank: usize,
+    /// LoRA / DoRA scaling alpha; defaults to 2 * rank.
     #[arg(long)]
     pub lora_alpha: Option<f64>,
+    /// LoRA / DoRA dropout probability.
     #[arg(long, default_value_t = 0.05)]
     pub lora_dropout: f32,
+    /// Comma-separated target module list.
     #[arg(
         long,
         default_value = "attn.wq,attn.wk,attn.wv,attn.wo,ffn.w_gate,ffn.w_up,ffn.w_down"
     )]
     pub target_modules: String,
+    /// Training batch size.
     #[arg(long)]
     pub batch_size: Option<usize>,
+    /// Maximum optimiser steps (overrides max-epochs when set).
     #[arg(long)]
     pub max_steps: Option<usize>,
+    /// Maximum training epochs.
     #[arg(long)]
     pub max_epochs: Option<usize>,
+    /// Learning rate.
     #[arg(long)]
     pub lr: Option<f64>,
+    /// Gradient accumulation steps before an optimiser update.
     #[arg(long)]
     pub grad_accum_steps: Option<usize>,
+    /// Linear warmup steps before the cosine schedule.
     #[arg(long)]
     pub warmup_steps: Option<usize>,
+    /// Save an adapter every N optimiser steps.
     #[arg(long)]
     pub save_every_n_steps: Option<usize>,
+    /// Log training metrics every N optimiser steps.
     #[arg(long)]
     pub log_every_n_steps: Option<usize>,
+    /// Disable dataset shuffling between epochs.
     #[arg(long)]
     pub no_shuffle: bool,
 }

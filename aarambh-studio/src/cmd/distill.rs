@@ -10,6 +10,7 @@ use aarambh_studio_train::TrainingRunConfig;
 use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
+/// Distil a smaller student model from a frozen local or dataset teacher.
 pub struct DistillArgs {
     #[command(subcommand)]
     pub command: DistillCommand,
@@ -28,171 +29,252 @@ pub enum DistillCommand {
 }
 
 #[derive(Debug, Args)]
+/// `distill train` — train a full student on fresh rollouts scored by a frozen teacher.
 pub struct TrainArgs {
+    /// Student distillation TOML configuration (architecture + train settings).
     #[arg(long, default_value = "configs/distill_smoke.toml")]
     pub config: PathBuf,
+    /// Student checkpoint path to fine-tune.
     #[arg(long)]
     pub student: PathBuf,
+    /// Optional tokenizer JSON path; falls back to the config.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// Prompts JSONL path; defaults to the config dataset path.
     #[arg(long)]
     pub prompts: Option<PathBuf>,
+    /// Output adapter directory; defaults to the config checkpoint dir.
     #[arg(long)]
     pub output: Option<PathBuf>,
+    /// Teacher backend: local (frozen checkpoint) or dataset (logged completions).
     #[arg(long, default_value = "local")]
     pub teacher: String,
+    /// Frozen teacher checkpoint path (required for --teacher local).
     #[arg(long)]
     pub teacher_model: Option<PathBuf>,
+    /// Frozen teacher TOML config path (required for --teacher local).
     #[arg(long)]
     pub teacher_config: Option<PathBuf>,
+    /// Teacher completions JSONL path (required for --teacher dataset).
     #[arg(long)]
     pub teacher_data: Option<PathBuf>,
+    /// Override the teacher device (e.g. cpu, cuda:0, metal).
     #[arg(long)]
     pub teacher_device: Option<String>,
+    /// Override the teacher dtype (e.g. f16, bf16, f32).
     #[arg(long)]
     pub teacher_dtype: Option<String>,
+    /// Distillation objective: soft-kl (forward KL) or reward (GRPO-style).
     #[arg(long)]
     pub objective: Option<String>,
+    /// Number of student rollouts sampled per prompt.
     #[arg(long, default_value_t = 4)]
     pub rollouts_per_prompt: usize,
+    /// Maximum new tokens generated per student rollout.
     #[arg(long, default_value_t = 128)]
     pub max_new_tokens: usize,
+    /// Sampling temperature for student rollouts.
     #[arg(long, default_value_t = 0.8)]
     pub temperature: f32,
+    /// Nucleus sampling probability mass for student rollouts.
     #[arg(long, default_value_t = 0.95)]
     pub top_p: f32,
+    /// Top-k sampling width for student rollouts.
     #[arg(long, default_value_t = 50)]
     pub top_k: usize,
+    /// Sampling temperature applied to the teacher distribution.
     #[arg(long, default_value_t = 1.0)]
     pub teacher_temperature: f64,
+    /// Maximum absolute advantage used to clip reward-weighted rollouts.
     #[arg(long, default_value_t = 5.0)]
     pub advantage_clip: f64,
+    /// Thinking budget: none, low, medium, high, or max.
     #[arg(long, default_value = "none")]
     pub thinking: String,
+    /// Training batch size.
     #[arg(long)]
     pub batch_size: Option<usize>,
+    /// Maximum optimiser steps (overrides max-epochs when set).
     #[arg(long)]
     pub max_steps: Option<usize>,
+    /// Maximum training epochs.
     #[arg(long)]
     pub max_epochs: Option<usize>,
+    /// Learning rate.
     #[arg(long)]
     pub lr: Option<f64>,
+    /// Gradient accumulation steps before an optimiser update.
     #[arg(long)]
     pub grad_accum_steps: Option<usize>,
+    /// Linear warmup steps before the cosine schedule.
     #[arg(long)]
     pub warmup_steps: Option<usize>,
+    /// Save an adapter every N optimiser steps.
     #[arg(long)]
     pub save_every_n_steps: Option<usize>,
+    /// Log training metrics every N optimiser steps.
     #[arg(long)]
     pub log_every_n_steps: Option<usize>,
+    /// Resume training from the latest adapter in the output directory.
     #[arg(long)]
     pub resume: bool,
+    /// Disable dataset shuffling between epochs.
     #[arg(long)]
     pub no_shuffle: bool,
 }
 
 #[derive(Debug, Args)]
+/// `distill prepare-offline` — generate one static local-teacher completion per prompt.
 pub struct PrepareOfflineArgs {
+    /// Frozen teacher TOML config path.
     #[arg(long)]
     pub teacher_config: PathBuf,
+    /// Frozen teacher checkpoint path.
     #[arg(long)]
     pub teacher_model: PathBuf,
+    /// Optional tokenizer JSON path; falls back to the teacher config.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// Input prompts JSONL path.
     #[arg(long)]
     pub prompts: PathBuf,
+    /// Output JSONL path with one static teacher completion per prompt.
     #[arg(long)]
     pub output: PathBuf,
+    /// Override the device used to generate completions.
     #[arg(long)]
     pub device: Option<String>,
+    /// Override the dtype used to generate completions.
     #[arg(long)]
     pub dtype: Option<String>,
+    /// Maximum new tokens generated per prompt.
     #[arg(long, default_value_t = 128)]
     pub max_new_tokens: usize,
+    /// Sampling temperature for completion generation.
     #[arg(long, default_value_t = 0.8)]
     pub temperature: f32,
+    /// Nucleus sampling probability mass for completion generation.
     #[arg(long, default_value_t = 0.95)]
     pub top_p: f32,
+    /// Top-k sampling width for completion generation.
     #[arg(long, default_value_t = 50)]
     pub top_k: usize,
+    /// RNG seed for deterministic completion sampling.
     #[arg(long, default_value_t = 42)]
     pub seed: u64,
 }
 
 #[derive(Debug, Args)]
+/// `distill train-offline` — train the matched static-completion offline control.
 pub struct TrainOfflineArgs {
+    /// Student distillation TOML configuration (architecture + train settings).
     #[arg(long, default_value = "configs/distill_smoke.toml")]
     pub config: PathBuf,
+    /// Student checkpoint path to fine-tune.
     #[arg(long)]
     pub student: PathBuf,
+    /// Optional tokenizer JSON path; falls back to the config.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// Static-completion JSONL produced by `distill prepare-offline`.
     #[arg(long)]
     pub data: PathBuf,
+    /// Output adapter directory; defaults to the config checkpoint dir.
     #[arg(long)]
     pub output: Option<PathBuf>,
+    /// Training batch size.
     #[arg(long)]
     pub batch_size: Option<usize>,
+    /// Maximum optimiser steps (overrides max-epochs when set).
     #[arg(long)]
     pub max_steps: Option<usize>,
+    /// Maximum training epochs.
     #[arg(long)]
     pub max_epochs: Option<usize>,
+    /// Learning rate.
     #[arg(long)]
     pub lr: Option<f64>,
+    /// Gradient accumulation steps before an optimiser update.
     #[arg(long)]
     pub grad_accum_steps: Option<usize>,
+    /// Save an adapter every N optimiser steps.
     #[arg(long)]
     pub save_every_n_steps: Option<usize>,
+    /// Log training metrics every N optimiser steps.
     #[arg(long)]
     pub log_every_n_steps: Option<usize>,
+    /// Resume training from the latest adapter in the output directory.
     #[arg(long)]
     pub resume: bool,
+    /// Disable dataset shuffling between epochs.
     #[arg(long)]
     pub no_shuffle: bool,
 }
 
 #[derive(Debug, Args)]
+/// `distill evaluate` — score fresh student rollouts and write alignment reports.
 pub struct EvaluateArgs {
+    /// Student distillation TOML configuration (architecture + train settings).
     #[arg(long, default_value = "configs/distill_smoke.toml")]
     pub config: PathBuf,
+    /// Student checkpoint path to evaluate.
     #[arg(long)]
     pub student: PathBuf,
+    /// Optional tokenizer JSON path; falls back to the config.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// Prompts JSONL path; defaults to the config dataset path.
     #[arg(long)]
     pub prompts: Option<PathBuf>,
+    /// Teacher backend: local (frozen checkpoint) or dataset (logged completions).
     #[arg(long, default_value = "local")]
     pub teacher: String,
+    /// Frozen teacher checkpoint path (required for --teacher local).
     #[arg(long)]
     pub teacher_model: Option<PathBuf>,
+    /// Frozen teacher TOML config path (required for --teacher local).
     #[arg(long)]
     pub teacher_config: Option<PathBuf>,
+    /// Teacher completions JSONL path (required for --teacher dataset).
     #[arg(long)]
     pub teacher_data: Option<PathBuf>,
+    /// Override the teacher device (e.g. cpu, cuda:0, metal).
     #[arg(long)]
     pub teacher_device: Option<String>,
+    /// Override the teacher dtype (e.g. f16, bf16, f32).
     #[arg(long)]
     pub teacher_dtype: Option<String>,
+    /// Distillation objective: soft-kl (forward KL) or reward (GRPO-style).
     #[arg(long)]
     pub objective: Option<String>,
+    /// Number of student rollouts sampled per prompt.
     #[arg(long, default_value_t = 2)]
     pub rollouts_per_prompt: usize,
+    /// Maximum new tokens generated per student rollout.
     #[arg(long, default_value_t = 128)]
     pub max_new_tokens: usize,
+    /// Sampling temperature for student rollouts.
     #[arg(long, default_value_t = 0.8)]
     pub temperature: f32,
+    /// Nucleus sampling probability mass for student rollouts.
     #[arg(long, default_value_t = 0.95)]
     pub top_p: f32,
+    /// Top-k sampling width for student rollouts.
     #[arg(long, default_value_t = 50)]
     pub top_k: usize,
+    /// Sampling temperature applied to the teacher distribution.
     #[arg(long, default_value_t = 1.0)]
     pub teacher_temperature: f64,
+    /// Optional cap on the number of prompts evaluated.
     #[arg(long)]
     pub max_prompts: Option<usize>,
+    /// Optional JSON output path for the alignment report.
     #[arg(long)]
     pub out: Option<PathBuf>,
+    /// Optional Markdown output path for the alignment report.
     #[arg(long)]
     pub markdown: Option<PathBuf>,
+    /// RNG seed for deterministic rollout sampling.
     #[arg(long, default_value_t = 42)]
     pub seed: u64,
 }
