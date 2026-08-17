@@ -845,7 +845,7 @@ orchestration is only as safe as the execution sandbox underneath it.
 
 **`aarambh-studio-agent`:**
 ```
-[ ] src/orchestrator.rs
+[x] src/orchestrator.rs
       DelegationPlan — the orchestrator's own reasoning produces a set
       of sub-tasks, each assigned to an independent sub-chain
       Each sub-chain is its own GenerationSession-backed instance
@@ -861,7 +861,7 @@ orchestration is only as safe as the execution sandbox underneath it.
 
 **Authorization boundary:**
 ```
-[ ] A sub-agent's sandbox scope can only be a subset of what the
+[x] A sub-agent's sandbox scope can only be a subset of what the
     orchestrator itself was authorized for (Phase 47's
     authorization.rs) — orchestration can never be used to escalate
     tool access beyond what the operator explicitly enabled
