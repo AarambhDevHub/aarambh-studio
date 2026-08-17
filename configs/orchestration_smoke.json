@@ -1,0 +1,56 @@
+{
+  "sub_tasks": [
+    {
+      "sub_task_id": "reader-a",
+      "prompt": "Read the file notes.txt and report its first line.",
+      "tools": [
+        {
+          "name": "read_file_in_workdir",
+          "description": "Read a UTF-8 text file from the working directory.",
+          "parameters": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "authorization": {"enabled": ["read_file_in_workdir"]},
+      "limits": {"timeout_ms": 5000, "max_output_bytes": 65536, "max_args_bytes": 8192},
+      "chain": {
+        "max_steps": 4,
+        "max_tokens_per_step": 256,
+        "context_reserve": 32,
+        "keep_recent": 4,
+        "summary_tokens": 128,
+        "eviction_policy": "drop_oldest"
+      }
+    },
+    {
+      "sub_task_id": "reader-b",
+      "prompt": "Read the file notes.txt and report its last line.",
+      "tools": [
+        {
+          "name": "read_file_in_workdir",
+          "description": "Read a UTF-8 text file from the working directory.",
+          "parameters": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "authorization": {"enabled": ["read_file_in_workdir"]},
+      "limits": {"timeout_ms": 5000, "max_output_bytes": 65536, "max_args_bytes": 8192},
+      "chain": {
+        "max_steps": 4,
+        "max_tokens_per_step": 256,
+        "context_reserve": 32,
+        "keep_recent": 4,
+        "summary_tokens": 128,
+        "eviction_policy": "drop_oldest"
+      }
+    }
+  ]
+}

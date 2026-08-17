@@ -2,6 +2,121 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0-alpha.8] - 2026-08-30
+
+### Added
+
+- **Phase 48 — Multi-Agent Orchestration:** Extends the agent crate with a
+  top-level **orchestrating reasoning process** that delegates independent
+  sub-tasks to multiple parallel sandboxed tool-execution sub-chains (each
+  governed entirely by Phase 47's boundaries), then merges their results
+  back into its own context via the existing `ToolResult` ingestion path
+  applied recursively. This is the natural successor of Phase 47 and
+  depends on it completely — orchestration is only as safe as the
+  execution sandbox underneath it.
+  - New `orchestrator` module (`aarambh-studio-agent`: `orchestrator.rs`):
+    the `Orchestrator` (built once from operator-set
+    `OrchestrationLimits` and the orchestrator's own `AuthorizationScope`),
+    `DelegationPlan` and `DelegatedSubTask` (the model/operator-authored
+    plan validated before any sub-chain runs), `SubChainOutcome` and
+    `SubChainStatus` (one outcome per sub-task, in plan order, always
+    present — never missing, never malformed), and `OrchestrationLimits`
+    (operator-set, non-model-influenceable ceilings). Each sub-chain is a
+    `ToolChain` backed by a `SandboxedToolProvider` constructed with the
+    sub-task's narrowed `AuthorizationScope` (via
+    `AuthorizationScope::intersect`), so execution plugs into the existing
+    chain with **zero chain changes** — sub-chain outputs re-enter the
+    orchestrator's own context via the unchanged `result_ingestion` path,
+    applied recursively. Orchestration is purely additive to what Phase 47
+    built.
+  - **Three hard, non-negotiable bounds** enforced as operator-set
+    configuration, never as something the orchestrator's own output can
+    influence:
+    1. `max_sub_agents` — a `DelegationPlan` with more sub-tasks than this
+       is rejected at `validate_plan` time, before any sub-chain runs. The
+       model cannot request unbounded fan-out by emitting a larger plan.
+       Range `1..=64`, matching the per-chain `max_steps` ceiling so an
+       orchestrator cannot fan out wider than a single chain could step.
+    2. `max_total_time_ms` — the sum across all sub-chains, not per
+       sub-chain, so many small sub-agents cannot collectively exceed the
+       same ceiling one large one would hit. Once exhausted, every
+       not-yet-started sub-task is refused with `SubChainStatus::BudgetExceeded`.
+    3. Sandbox scope containment — a sub-agent's `AuthorizationScope` may
+       only be a subset of its orchestrator's. Verified at `validate_plan`
+       time by `parent.intersect(&child) == child` (true iff
+       `child ⊆ parent`). Additionally, every tool name a sub-task declares
+       must be `is_authorized` in that sub-task's own scope. Orchestration
+       can never be used as an escalation path to reach tools the operator
+       did not explicitly enable at the top level.
+  - **Failure isolation:** one sub-agent's failure or execution error is
+    contained to that sub-chain's own outcome — it does not corrupt or
+    silently swallow sibling sub-agents' results. Each sub-chain runs
+    inside a `std::panic::catch_unwind` boundary; panics become
+    `SubChainStatus::Failed` with the panic payload rendered into the
+    fail-closed `ToolResult::error` text. The orchestrator's aggregation
+    step receives an explicit failure marker for that sub-chain rather
+    than a missing or malformed entry.
+  - **CLI:** the `agent` command gains five new opt-in flags: `--orchestrate`
+    (switch from single-chain mode to orchestration mode),
+    `--delegation-plan <PATH>` (JSON file describing the `DelegationPlan`),
+    `--max-sub-agents N` (default 4, hard ceiling on sub-agent count),
+    `--max-orchestration-budget-ms MS` (default 30,000, hard ceiling on
+    summed sub-chain wall-clock), and `--sub-agent-allow-tool <NAME>`
+    (repeatable; sub-agents' scope is `intersect(orchestrator_scope,
+    these names)` — never wider than the orchestrator's `--allow-tool`
+    scope). When `--orchestrate` is absent, the command behaves exactly
+    as in Phase 47 — zero behavior change for non-orchestrating use.
+  - **CPU-first honest:** sub-chains run sequentially by default. The
+    spec's wording — *"Sub-chains run (conceptually parallel; actual
+    concurrency bounded by configured limits below)"* — is honored:
+    `max_sub_agents` and `max_total_time_ms` together bound the total
+    work even when run sequentially. True parallelism would require a
+    `ChainDecoder` whose implementor is `Send + Sync`, which is out of
+    scope for the source release because the `InferenceEngine` holds a
+    Candle device that is not safely cloneable across threads. The CLI's
+    per-sub-task decoder factory rebuilds a fresh `InferenceEngine` per
+    sub-chain so each sub-chain owns its own `&mut` decoder.
+  - **Tests:** five roadmap-named acceptance tests (one per acceptance
+    criterion in `ROADMAP_V4.md` §"Phase 48 — Tests") plus five supporting
+    tests, all in `crates/aarambh-studio-agent/src/orchestrator.rs`,
+    using a `FakeDecoder` mirroring `chain.rs::tests::FakeDecoder` and
+    `sandbox.rs::tests::FakeDecoder` so they run in milliseconds:
+    `orchestrator_cannot_exceed_configured_max_sub_agent_count`,
+    `orchestrator_cannot_exceed_configured_total_execution_time_budget`,
+    `sub_agent_sandbox_scope_is_never_wider_than_orchestrator_authorization`,
+    `result_aggregation_correctly_merges_multiple_sub_chain_outputs`,
+    `one_sub_agent_failure_does_not_silently_corrupt_sibling_sub_agent_results`,
+    plus supporting tests for `OrchestrationLimits` validation, the
+    `intersect == child when subset` invariant, defense-in-depth plan
+    re-validation in `run`, sub-task-declares-unauthorized-tool rejection,
+    and an end-to-end
+    `orchestrator_sub_chain_can_execute_tools_through_sandbox` test that
+    proves the orchestrator-built provider actually executes a tool call
+    through the sandbox and re-ingests the result.
+  - **Smoke:** `scripts/phase48_smoke.sh` runs the orchestrator unit
+    tests, verifies `agent --help` surfaces the new flags, verifies
+    `--orchestrate` errors on missing `--delegation-plan` and missing
+    `--allow-tool`, verifies a plan exceeding `--max-sub-agents` is
+    rejected at validation time before any model is loaded, and writes a
+    scorecard to `artifacts/phase48_orchestration_smoke.json`. Config
+    fixture: `configs/orchestration_smoke.json` (two-sub-task plan using
+    `read_file_in_workdir` against `data/sandbox_workdir`).
+  - **Docs:** `docs/phase48_orchestration.md` is the runbook, mirroring
+    `docs/phase47_sandbox.md` in structure (Why this phase exists → Hard
+    bounds → Failure isolation → Composability → CLI → Tests → Smoke
+    workflow → Honesty boundary → What this enables next).
+  - **No new crate, no new dependency.** Phase 48 lives entirely in
+    `crates/aarambh-studio-agent/src/orchestrator.rs`. The only changes to
+    existing files were one line added to `lib.rs` (`pub mod orchestrator;`
+    plus re-exports) and one derive added to `chain.rs::ToolChainConfig`
+    (`serde::Serialize, serde::Deserialize`, needed so `DelegatedSubTask`
+    can round-trip through JSON — strictly additive).
+
+### Changed
+
+- Bumped workspace version from `4.0.0-alpha.7` to `4.0.0-alpha.8`.
+  `Cargo.lock` updated to match.
+
 ## [4.0.0-alpha.7] - 2026-08-23
 
 ### Added

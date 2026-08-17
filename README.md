@@ -18,33 +18,22 @@ with hybrid Gated DeltaNet, DeepSeek Sparse Attention,
 fine-grained MoE with shared experts, Multi-Token Prediction (MTP), on-policy
 distillation, native quantization-aware training, native video/document input,
 bounded long-horizon tool-use chains, persistent forgetting diagnostics, and
-Max thinking mode (16,384-token budget). **v4.0.0-alpha.6** continues the v4 arc
+Max thinking mode (16,384-token budget). **v4.0.0-alpha.8** continues the v4 arc
 with Multi-Head Latent Attention (Phase 41), a native Audio modality
 (Phase 42), sparse/grouped MoE dispatch (Phase 43), multi-node
 distributed training (Phase 44), test-time compute scaling
-(Phase 45), and RLAIF (Phase 46) — a frozen audio
-spectrogram transformer plus trainable projector that lets the model hear and
-reason about audio clips (the same frozen-encoder-plus-projector recipe vision,
-video, and documents use), real sparse expert dispatch where each token
-computes only its assigned top-k experts rather than every expert on every
-token then masked (numerically equivalent to the dense path, faster on CUDA),
-data-parallel training extended across multiple nodes over a TCP
-rendezvous so the world can scale past a single machine's GPU count,
-Best-of-N / self-consistency / verifier-guided / process-reward
-selection that generates N independent candidate completions and selects
-the best one at inference time — a new axis alongside the existing
-thinking-mode budget system, distinct from controlling how many tokens
-one generation spends reasoning — RLAIF, a third alignment signal
-alongside GRPO and DPO where a frozen judge model scores pairs of
-self-sampled completions (judged in both orderings to correct position
-bias) and the resulting `(chosen, rejected)` pairs feed the existing
-unmodified `finetune dpo` pipeline — and **sandboxed tool execution**
-(Phase 47), which closes the boundary v2 §30 opened (emit-only) and
-v3 §46 extended (multi-step, still emit-only): the model's tool calls can
-now be **actually executed** by aarambh-studio itself, but only inside a
-strict, closed-world sandbox (registered named executors, operator
-authorization, schema re-validation, wall-clock timeout, and output-size
-ceiling — there is no generic shell or eval executor, ever, by design).
+(Phase 45), RLAIF (Phase 46), sandboxed tool execution
+(Phase 47), and **multi-agent orchestration (Phase 48)** — one
+top-level orchestrating reasoning process delegates independent sub-tasks
+to multiple parallel sandboxed tool-execution sub-chains (each governed
+entirely by Phase 47's boundaries), then merges their results back into
+its own context via the existing `ToolResult` ingestion path applied
+recursively. Three hard, non-negotiable, operator-set bounds hold: maximum
+sub-agent count, maximum total execution time budget, and sandbox scope
+containment (a sub-agent's `AuthorizationScope` can only be a subset of
+its orchestrator's, never wider) — and one sub-agent's failure is
+contained to its own outcome, never corrupting sibling sub-agents'
+results.
 
 > [!IMPORTANT]
 > This is a source and engineering project. It does not publish crates to
@@ -143,6 +132,7 @@ See the phase-specific docs for full walkthroughs with smoke fixtures:
 | Inference (text, thinking, image, video, document, audio) | [docs/aarambh-studio-complete-guide.md](docs/aarambh-studio-complete-guide.md) |
 | Tool-use agent chains | [docs/phase37_agent.md](docs/phase37_agent.md) |
 | Sandboxed tool execution | [docs/phase47_sandbox.md](docs/phase47_sandbox.md) |
+| Multi-agent orchestration | [docs/phase48_orchestration.md](docs/phase48_orchestration.md) |
 | Video understanding | [docs/phase35_video.md](docs/phase35_video.md) |
 | Document understanding | [docs/phase36_document.md](docs/phase36_document.md) |
 | Audio understanding | [docs/phase42_audio.md](docs/phase42_audio.md) |
@@ -278,6 +268,9 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
 | [docs/phase43_sparse_moe.md](docs/phase43_sparse_moe.md) | Sparse/grouped dispatch design, CPU/CUDA honesty, and equivalence proof |
 | [docs/phase44_multi_node.md](docs/phase44_multi_node.md) | Multi-node topology, TCP rendezvous, single-retry fault policy, and validation paths |
 | [docs/phase45_test_time.md](docs/phase45_test_time.md) | Best-of-N, self-consistency, verifier, and process-reward selection at inference time |
+| [docs/phase46_rlaif.md](docs/phase46_rlaif.md) | RLAIF judge-model preference-pair generation feeding the existing DPO pipeline |
+| [docs/phase47_sandbox.md](docs/phase47_sandbox.md) | Sandboxed tool execution envelope, closed-world allowlist, reference executors, and honesty boundary |
+| [docs/phase48_orchestration.md](docs/phase48_orchestration.md) | Multi-agent orchestration: delegation plan, three hard bounds, failure isolation, and composability |
 | [RELEASE.md](RELEASE.md) | Source-release process and artifact policy |
 | [CHANGELOG.md](CHANGELOG.md) | Versioned implementation history |
 
@@ -294,7 +287,14 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
   closed-world named capabilities (e.g. `read_file_in_workdir`) inside a
   bounded envelope. A general-purpose code-execution sandbox remains out
   of scope — execution is strictly closed-world, never arbitrary code or
-  shell execution.
+  shell execution. Phase 48 adds opt-in multi-agent orchestration
+  (`agent --orchestrate`) that delegates independent sub-tasks to multiple
+  sandboxed tool-execution sub-chains under three hard, operator-set
+  bounds (max sub-agent count, total execution time budget, sandbox scope
+  containment via `AuthorizationScope::intersect`); sub-chains run
+  sequentially by default (CPU-first honest — true parallelism would
+  require a `Send + Sync` `ChainDecoder`, out of scope for the source
+  release).
 - Video is visual-only H.264 MP4; audio is WAV PCM only (no MP3/FLAC/Ogg).
 - Documents are pixel-based (no OCR/table parser).
 - The server is local/single-model; vision, audio, and self-learning are CLI workflows.
@@ -316,7 +316,7 @@ reproducible bugs and scoped feature requests. Report vulnerabilities through
   author  = {Aarambh Dev Hub},
   year    = {2026},
   url     = {https://github.com/AarambhDevHub/aarambh-studio},
-  version = {4.0.0-alpha.7},
+  version = {4.0.0-alpha.8},
   license = {Apache-2.0}
 }
 ```

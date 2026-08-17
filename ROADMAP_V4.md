@@ -897,6 +897,22 @@ git commit -m "feat: Phase 48 — multi-agent orchestration"
 git tag v4.0.0-alpha.8
 ```
 
+> **Status: shipped in v4.0.0-alpha.8** — `crates/aarambh-studio-agent/src/
+> orchestrator.rs` (`Orchestrator`, `DelegationPlan`, `DelegatedSubTask`,
+> `SubChainOutcome`, `SubChainStatus`, `OrchestrationLimits`) ships the
+> three hard bounds (max sub-agent count, total execution time budget,
+> sandbox scope containment via `AuthorizationScope::intersect`), failure
+> isolation via `catch_unwind`, and result aggregation via the existing
+> `ToolResultProvider` path applied recursively. CLI: `agent --orchestrate
+> --delegation-plan <PATH> --max-sub-agents N --max-orchestration-budget-ms
+> MS --sub-agent-allow-tool NAME`. Sub-chains run sequentially (CPU-first
+> honest default); true parallelism is gated on a future `Send + Sync`
+> `ChainDecoder`. The five roadmap-named acceptance tests plus five
+> supporting tests prove every invariant using fake decoders and real
+> sandbox executors, running in milliseconds. See
+> `docs/phase48_orchestration.md` for the runbook and the honesty
+> boundary.
+
 ---
 
 ## Phase 49 — Retrieval-Augmented Generation (RAG)
