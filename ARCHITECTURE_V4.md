@@ -825,6 +825,13 @@ attack surface for "convince the model to execute something dangerous"
 bounded by what a human operator pre-approved, not by what the model
 can be talked into requesting.
 
+> **Implemented in v4.0.0-alpha.7** as `crates/aarambh-studio-agent/src/{sandbox,authorization}.rs`.
+> `SandboxedToolProvider` implements `ToolResultProvider`, so execution plugs
+> into the existing `ToolChain` with zero chain changes. See
+> `docs/phase47_sandbox.md` for the runbook and the honesty boundary
+> (pure-Rust CPU sandbox: wall-clock timeout + output/argument-size ceilings;
+> OS-level isolation is out of scope for the source release).
+
 ---
 
 ## 62. Multi-Agent Orchestration

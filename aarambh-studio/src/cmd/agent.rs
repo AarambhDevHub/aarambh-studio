@@ -3,9 +3,10 @@ use std::io::{self, BufReader};
 use std::path::PathBuf;
 
 use aarambh_studio_agent::{
-    AgentError, AgentResult, ChainDecoder, ChainEvent, EvictionPolicy, ReplayResultProvider,
+    AgentError, AgentResult, AuthorizationScope, ChainDecoder, ChainEvent, EvictionPolicy,
+    ReadFileInWorkdir, ReplayResultProvider, SandboxLimits, SandboxedToolProvider,
     StdinResultProvider, ToolChain, ToolChainConfig, ToolExchange, ToolResult, ToolResultContent,
-    ToolResultProvider, ToolResultRequest,
+    ToolResultProvider, ToolResultRequest, ToolSandbox,
 };
 use aarambh_studio_core::{AarambhError, Configurable, TokenizerLike};
 use aarambh_studio_inference::{
@@ -98,11 +99,32 @@ pub struct AgentArgs {
     /// JSONL safety audit path.
     #[arg(long, default_value = "safety_audit.jsonl")]
     pub safety_audit_log: PathBuf,
+    /// Execute tool calls inside the sandbox instead of reading caller
+    /// results from stdin/replay (Phase 47). Only tools listed via
+    /// `--allow-tool` are executable; everything else is a hard refusal.
+    #[arg(long)]
+    pub execute_tools: bool,
+    /// Operator-authorized tool name. Repeat to enable multiple tools.
+    /// Only these names may ever execute when `--execute-tools` is set.
+    #[arg(long = "allow-tool", value_name = "NAME")]
+    pub allow_tool: Vec<String>,
+    /// Per-call wall-clock ceiling for sandboxed execution, in milliseconds.
+    #[arg(long, default_value_t = aarambh_studio_agent::DEFAULT_TIMEOUT_MS)]
+    pub exec_timeout_ms: u64,
+    /// Maximum output payload bytes a sandboxed executor may return.
+    #[arg(long, default_value_t = aarambh_studio_agent::DEFAULT_MAX_OUTPUT_BYTES)]
+    pub exec_max_output_bytes: usize,
+    /// Working directory for the `read_file_in_workdir` executor. The
+    /// executor is registered only when this is set; it can never read
+    /// outside this directory.
+    #[arg(long)]
+    pub exec_workdir: Option<PathBuf>,
 }
 
 enum CliResultProvider {
     Replay(ReplayResultProvider),
     Stdin(StdinResultProvider<BufReader<io::Stdin>>),
+    Sandbox(SandboxedToolProvider),
 }
 
 impl ToolResultProvider for CliResultProvider {
@@ -110,6 +132,7 @@ impl ToolResultProvider for CliResultProvider {
         match self {
             Self::Replay(provider) => provider.next_result(request),
             Self::Stdin(provider) => provider.next_result(request),
+            Self::Sandbox(provider) => provider.next_result(request),
         }
     }
 
@@ -117,6 +140,7 @@ impl ToolResultProvider for CliResultProvider {
         match self {
             Self::Replay(provider) => provider.finish(),
             Self::Stdin(provider) => provider.finish(),
+            Self::Sandbox(provider) => provider.finish(),
         }
     }
 }
@@ -456,6 +480,11 @@ impl ChainDecoder for CliChainDecoder {
 
 /// Execute the agent CLI command.
 pub fn run(args: AgentArgs) -> anyhow::Result<()> {
+    // Validate sandboxed-execution config first so operator errors surface
+    // before any model is loaded or checkpoint is resolved.
+    if args.execute_tools {
+        validate_sandbox_config(&args)?;
+    }
     let run_config = TrainingRunConfig::from_toml(&args.config)?;
     let run_device = run_config.device()?;
     let dtype = run_config.dtype_for_device(&run_device)?.to_candle();
@@ -512,9 +541,13 @@ pub fn run(args: AgentArgs) -> anyhow::Result<()> {
         document_runtime: None,
         projected_media: None,
     };
-    let provider = match args.results {
-        Some(path) => CliResultProvider::Replay(ReplayResultProvider::from_jsonl(path)?),
-        None => CliResultProvider::Stdin(StdinResultProvider::new(BufReader::new(io::stdin()))),
+    let provider = if args.execute_tools {
+        CliResultProvider::Sandbox(build_sandbox_provider(&args, &definitions)?)
+    } else {
+        match args.results {
+            Some(path) => CliResultProvider::Replay(ReplayResultProvider::from_jsonl(path)?),
+            None => CliResultProvider::Stdin(StdinResultProvider::new(BufReader::new(io::stdin()))),
+        }
     };
     let eviction_policy = parse_eviction(&args.eviction)?;
     let chain_config = ToolChainConfig {
@@ -596,4 +629,68 @@ fn parse_eviction(value: &str) -> anyhow::Result<EvictionPolicy> {
             "invalid eviction policy {other:?}, expected drop-oldest|summarise"
         )),
     }
+}
+
+/// Build the sandboxed-execution provider from the operator's CLI flags.
+///
+/// Authorization is an operator decision: only `--allow-tool` names may
+/// execute. The closed-world allowlist is the set of registered executors
+/// (currently `read_file_in_workdir`, bound to `--exec-workdir`). A name
+/// that is authorized but has no registered executor is still a hard
+/// refusal at execution time (`ExecError::UnknownTool`).
+fn build_sandbox_provider(
+    args: &AgentArgs,
+    definitions: &[ToolDefinition],
+) -> anyhow::Result<SandboxedToolProvider> {
+    // Defense-in-depth: validate_sandbox_config already ran at the top of
+    // run(), so these checks are redundant here but kept so a programmatic
+    // caller cannot bypass them.
+    validate_sandbox_config(args)?;
+    let mut authorization = AuthorizationScope::empty();
+    for name in &args.allow_tool {
+        authorization
+            .enable(name)
+            .map_err(|error| anyhow::anyhow!("invalid --allow-tool value: {error}"))?;
+    }
+    let limits = SandboxLimits {
+        timeout_ms: args.exec_timeout_ms,
+        max_output_bytes: args.exec_max_output_bytes,
+        max_args_bytes: aarambh_studio_agent::DEFAULT_MAX_ARGS_BYTES,
+    };
+    let mut sandbox = ToolSandbox::new(authorization, limits)
+        .map_err(|error| anyhow::anyhow!("sandbox configuration error: {error}"))?;
+    sandbox
+        .register_definitions(definitions)
+        .map_err(|error| anyhow::anyhow!("sandbox definition error: {error}"))?;
+    if let Some(workdir) = &args.exec_workdir {
+        let executor = ReadFileInWorkdir::new(workdir)
+            .map_err(|error| anyhow::anyhow!("--exec-workdir error: {error}"))?;
+        sandbox
+            .register_executor(Box::new(executor))
+            .map_err(|error| anyhow::anyhow!("executor registration error: {error}"))?;
+    }
+    Ok(SandboxedToolProvider::new(sandbox))
+}
+
+/// Validate the sandboxed-execution config before any model is loaded, so
+/// operator errors (missing `--allow-tool`, unauthorized `--exec-workdir`)
+/// surface immediately rather than after a checkpoint is resolved.
+fn validate_sandbox_config(args: &AgentArgs) -> anyhow::Result<()> {
+    if args.allow_tool.is_empty() {
+        return Err(anyhow::anyhow!(
+            "--execute-tools requires at least one --allow-tool <NAME> to authorize execution"
+        ));
+    }
+    if args.exec_workdir.is_some()
+        && !args
+            .allow_tool
+            .iter()
+            .any(|name| name == ReadFileInWorkdir::NAME)
+    {
+        return Err(anyhow::anyhow!(
+            "--exec-workdir registers the {:?} executor but it was not authorized via --allow-tool",
+            ReadFileInWorkdir::NAME
+        ));
+    }
+    Ok(())
 }

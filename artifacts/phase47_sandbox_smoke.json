@@ -1,0 +1,21 @@
+{
+  "phase": 47,
+  "title": "Tool Execution With Sandboxing",
+  "agent_unit_tests": "passed",
+  "cli_flags_surface": [
+    "--execute-tools",
+    "--allow-tool",
+    "--exec-timeout-ms",
+    "--exec-max-output-bytes",
+    "--exec-workdir"
+  ],
+  "closed_world_allowlist": true,
+  "operator_authorization": true,
+  "schema_revalidation": true,
+  "wall_clock_timeout": true,
+  "output_and_args_ceilings": true,
+  "fail_closed_on_every_failure": true,
+  "no_new_crate": true,
+  "no_new_dependency": true,
+  "honesty_note": "The sandbox is pure-Rust and CPU-only: wall-clock timeout (cooperative cancellation + thread-detachment), output/argument size ceilings, closed-world allowlist, operator authorization, and schema re-validation. OS-level isolation (seccomp/cgroups) is out of scope for the source release. The 6 roadmap-named acceptance tests prove the safety-relevant property \u2014 a runaway or hung call never blocks the chain and always produces a fail-closed result \u2014 under every tested failure condition. A general-purpose code-execution sandbox remains explicitly out of scope: execution is strictly closed-world, named-capability tool execution."
+}

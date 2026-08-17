@@ -59,6 +59,17 @@ This documents caller-executed result ingestion, exact-token continuation,
 context eviction/summarisation, multimodal result lifetime, safety checks,
 multi-step SFT, scripted evaluation, and the BFCL response-path boundary.
 
+### 4b. `phase47_sandbox.md`
+**The sandboxed tool-execution runbook (Phase 47).**
+
+This documents the closed-world `ToolExecutor` model, operator
+authorization (`AuthorizationScope`), the bounded execution envelope
+(wall-clock timeout + output/argument-size ceilings + schema
+re-validation), the `SandboxedToolProvider` composability bridge into the
+existing `ToolChain`, the reference `read_file_in_workdir` and `lookup`
+executors, the `agent --execute-tools` CLI surface, the smoke workflow,
+and the honesty boundary (pure-Rust CPU sandbox, no OS-level isolation).
+
 ### 5. `phase38_forgetting.md`
 **Capability regression, MoE routing drift, and the Manas JSONL bridge.**
 

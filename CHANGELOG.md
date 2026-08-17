@@ -2,6 +2,92 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0-alpha.7] - 2026-08-23
+
+### Added
+
+- **Phase 47 — Tool Execution With Sandboxing:** Closes the boundary v2
+  §30 opened (tool calls are emitted, never executed) and v3 §46 extended
+  (multi-step chains, still emit-only): the model's tool calls can now be
+  **actually executed** by aarambh-studio itself, but only inside a strict,
+  closed-world sandbox. This is the highest-risk phase before Phase 51 and
+  is scoped conservatively on purpose — there is no generic "run a shell
+  command" or "eval this code" executor anywhere in the crate, by design.
+  - New `sandbox` module (`aarambh-studio-agent`: `sandbox.rs`): the
+    `ToolExecutor` trait (one specific, named capability per implementor),
+    `ToolSandbox` (closed-world registry + compiled JSON Schemas +
+    authorization + limits), `SandboxLimits` (wall-clock `timeout_ms`,
+    `max_output_bytes`, `max_args_bytes`), `ExecContext` (limits +
+    cooperative cancellation flag + deadline), `ValidatedArgs` (newtype
+    guarantee — executors never receive untrusted input), `ExecError`
+    (`UnknownTool`/`Unauthorized`/`InvalidArgs`/`Timeout`/
+    `ResourceLimitExceeded`/`Executor`), and `SandboxedToolProvider`
+    (implements `ToolResultProvider`, so execution plugs into the existing
+    `ToolChain` with **zero chain changes** — results re-enter via the
+    unchanged `result_ingestion` path, execution is purely additive to what
+    v3 §46 built).
+  - New `authorization` module (`aarambh-studio-agent`: `authorization.rs`):
+    `AuthorizationScope` — the closed set of tool names an operator
+    explicitly enabled at startup. Per-tool authorization is an **operator**
+    decision, not a model decision: the model can request execution of
+    anything in its declared schema, but only authorized tools are ever
+    executed. `AuthorizationScope::intersect` supports Phase 48's
+    multi-agent orchestration, where a sub-agent's scope can only be a
+    *subset* of its orchestrator's — orchestration can never escalate tool
+    access beyond what the operator enabled at the top level.
+  - Two reference `ToolExecutor` implementations: `ReadFileInWorkdir` (the
+    milestone executor — a read-only file lookup confined to a fixed working
+    directory; refuses absolute paths and `..` traversal, caps output bytes,
+    no network or write access by construction) and `StaticLookup` (an
+    in-memory key→text executor for deterministic tests and smoke runs).
+  - The full §61 execution pipeline is enforced by `ToolSandbox::execute`:
+    (1) closed-world allowlist — the name must match a registered executor;
+    (2) operator authorization — distinct from `UnknownTool`, a capability
+    can exist and be declared but unauthorized; (3) argument-size ceiling;
+    (4) schema re-validation, defense-in-depth on top of the
+    grammar-constrained decoder — malformed or schema-invalid calls are
+    never executed; (5) bounded envelope — worker thread with
+    `recv_timeout` wall-clock timeout, cooperative cancellation via an
+    `AtomicBool` flag, detached-on-timeout since safe Rust cannot
+    force-kill a thread; (6) output-size ceiling. Every failure yields a
+    fail-closed `ToolResult{status:Error, error:...}` — the chain records
+    the refusal and continues, it never silently drops a call.
+  - New `agent` CLI flags: `--execute-tools` (switch from caller-executed
+    stdin/replay results to sandboxed execution), `--allow-tool <NAME>`
+    (repeatable operator authorization), `--exec-timeout-ms`,
+    `--exec-max-output-bytes`, `--exec-workdir <DIR>` (binds the
+    `ReadFileInWorkdir` executor).
+  - Six roadmap-named acceptance tests in `sandbox.rs` (plus supporting
+    tests for authorization intersect, read-file traversal refusal, and
+    limits validation): `unlisted_tool_name_is_hard_refused_never_attempted`,
+    `unauthorized_but_declared_tool_is_refused_at_execution_not_declaration`,
+    `execution_timeout_kills_a_hanging_tool_call`,
+    `execution_respects_configured_memory_and_cpu_ceiling`,
+    `malformed_tool_call_json_is_never_executed`, and
+    `execution_result_re_ingests_correctly_into_the_next_chain_step` (this
+    last one drives the real `ToolChain` with a `FakeDecoder` +
+    `SandboxedToolProvider` + `StaticLookup` and asserts the executed
+    result is re-ingested into the chain state).
+  - New `scripts/phase47_smoke.sh`: runs the agent-crate sandbox unit tests,
+    verifies `agent --help` surfaces the new flags, and writes a scorecard
+    to `artifacts/phase47_sandbox_smoke.json`.
+  - New `docs/phase47_sandbox.md`: dedicated Phase 47 runbook (mirrors
+    `docs/phase46_rlaif.md` structure).
+
+### Honesty boundary
+
+Phase 47's sandbox is pure-Rust and CPU-only: wall-clock timeout
+(cooperative cancellation + thread-detachment on timeout, since safe Rust
+cannot force-kill a thread), output-size ceiling, argument-size ceiling,
+closed-world allowlist, operator authorization, and schema re-validation.
+OS-level isolation (seccomp, cgroups, namespaces) is out of scope for the
+source release, consistent with the project's CPU-first posture. The
+safety-relevant property — a runaway or hung call never blocks the chain
+and always produces a fail-closed result — holds under every tested failure
+condition. A general-purpose code-execution sandbox remains explicitly out
+of scope: Phase 47's execution is strictly closed-world, named-capability
+tool execution, never arbitrary code or shell execution.
+
 ## [4.0.0-alpha.6] - 2026-08-16
 
 ### Added

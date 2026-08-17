@@ -34,11 +34,17 @@ Best-of-N / self-consistency / verifier-guided / process-reward
 selection that generates N independent candidate completions and selects
 the best one at inference time — a new axis alongside the existing
 thinking-mode budget system, distinct from controlling how many tokens
-one generation spends reasoning — and RLAIF, a third alignment signal
+one generation spends reasoning — RLAIF, a third alignment signal
 alongside GRPO and DPO where a frozen judge model scores pairs of
 self-sampled completions (judged in both orderings to correct position
 bias) and the resulting `(chosen, rejected)` pairs feed the existing
-unmodified `finetune dpo` pipeline.
+unmodified `finetune dpo` pipeline — and **sandboxed tool execution**
+(Phase 47), which closes the boundary v2 §30 opened (emit-only) and
+v3 §46 extended (multi-step, still emit-only): the model's tool calls can
+now be **actually executed** by aarambh-studio itself, but only inside a
+strict, closed-world sandbox (registered named executors, operator
+authorization, schema re-validation, wall-clock timeout, and output-size
+ceiling — there is no generic shell or eval executor, ever, by design).
 
 > [!IMPORTANT]
 > This is a source and engineering project. It does not publish crates to
@@ -136,6 +142,7 @@ See the phase-specific docs for full walkthroughs with smoke fixtures:
 | Train (CPU/GPU, MTP, MoE, distillation, QAT) | `aarambh-studio train --help` + [configs/](configs/) TOML examples |
 | Inference (text, thinking, image, video, document, audio) | [docs/aarambh-studio-complete-guide.md](docs/aarambh-studio-complete-guide.md) |
 | Tool-use agent chains | [docs/phase37_agent.md](docs/phase37_agent.md) |
+| Sandboxed tool execution | [docs/phase47_sandbox.md](docs/phase47_sandbox.md) |
 | Video understanding | [docs/phase35_video.md](docs/phase35_video.md) |
 | Document understanding | [docs/phase36_document.md](docs/phase36_document.md) |
 | Audio understanding | [docs/phase42_audio.md](docs/phase42_audio.md) |
@@ -281,7 +288,13 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
   Multi-node training is data-parallel only (Phase 44), not model/pipeline-parallel.
   Test-time compute scaling (Phase 45) is text-only and ships a heuristic
   process-reward scorer plus a trait for a future trained head.
-- Tool chains are generated and orchestrated but never executed by the runtime.
+- Tool chains were historically generated and orchestrated but never
+  executed by the runtime; Phase 47 adds opt-in sandboxed execution
+  (`agent --execute-tools`) that executes only operator-authorized,
+  closed-world named capabilities (e.g. `read_file_in_workdir`) inside a
+  bounded envelope. A general-purpose code-execution sandbox remains out
+  of scope — execution is strictly closed-world, never arbitrary code or
+  shell execution.
 - Video is visual-only H.264 MP4; audio is WAV PCM only (no MP3/FLAC/Ogg).
 - Documents are pixel-based (no OCR/table parser).
 - The server is local/single-model; vision, audio, and self-learning are CLI workflows.
@@ -303,7 +316,7 @@ reproducible bugs and scoped feature requests. Report vulnerabilities through
   author  = {Aarambh Dev Hub},
   year    = {2026},
   url     = {https://github.com/AarambhDevHub/aarambh-studio},
-  version = {4.0.0-alpha.6},
+  version = {4.0.0-alpha.7},
   license = {Apache-2.0}
 }
 ```
