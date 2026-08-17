@@ -3,10 +3,12 @@ use std::io::{self, BufReader};
 use std::path::PathBuf;
 
 use aarambh_studio_agent::{
-    AgentError, AgentResult, AuthorizationScope, ChainDecoder, ChainEvent, EvictionPolicy,
-    ReadFileInWorkdir, ReplayResultProvider, SandboxLimits, SandboxedToolProvider,
-    StdinResultProvider, ToolChain, ToolChainConfig, ToolExchange, ToolResult, ToolResultContent,
-    ToolResultProvider, ToolResultRequest, ToolSandbox,
+    AgentError, AgentResult, AuthorizationScope, ChainDecoder, ChainEvent, DEFAULT_MAX_SUB_AGENTS,
+    DEFAULT_MAX_TOTAL_TIME_MS, DelegatedSubTask, DelegationPlan, EvictionPolicy,
+    OrchestrationLimits, Orchestrator, ReadFileInWorkdir, ReplayResultProvider, SandboxLimits,
+    SandboxedToolProvider, StaticLookup, StdinResultProvider, SubChainOutcome, SubChainStatus,
+    ToolChain, ToolChainConfig, ToolExchange, ToolResult, ToolResultContent, ToolResultProvider,
+    ToolResultRequest, ToolSandbox,
 };
 use aarambh_studio_core::{AarambhError, Configurable, TokenizerLike};
 use aarambh_studio_inference::{
@@ -119,6 +121,32 @@ pub struct AgentArgs {
     /// outside this directory.
     #[arg(long)]
     pub exec_workdir: Option<PathBuf>,
+    // --- Phase 48: Multi-agent orchestration -----------------------------
+    // All opt-in. When `--orchestrate` is absent, the command behaves
+    // exactly as in Phase 47 — zero behavior change for non-orchestrating
+    // use. See docs/phase48_orchestration.md for the runbook.
+    /// Switch from single-chain mode to multi-agent orchestration (Phase 48).
+    /// Requires `--delegation-plan <PATH>`. Sub-chains run under
+    /// `--max-sub-agents` and `--max-orchestration-budget-ms` ceilings.
+    #[arg(long)]
+    pub orchestrate: bool,
+    /// JSON file describing the DelegationPlan (one or more sub-tasks).
+    /// Required when `--orchestrate` is set.
+    #[arg(long)]
+    pub delegation_plan: Option<PathBuf>,
+    /// Hard ceiling on the number of sub-agents in any delegation plan.
+    /// A plan with more sub-tasks is rejected before any sub-chain runs.
+    #[arg(long, default_value_t = DEFAULT_MAX_SUB_AGENTS)]
+    pub max_sub_agents: usize,
+    /// Hard ceiling on the sum of sub-chain wall-clock times, in
+    /// milliseconds. The sum across all sub-chains, not per sub-chain.
+    #[arg(long, default_value_t = DEFAULT_MAX_TOTAL_TIME_MS)]
+    pub max_orchestration_budget_ms: u64,
+    /// Per-sub-agent authorized tool name (repeatable). Sub-agents'
+    /// scope is `intersect(orchestrator_scope, these names)` — never
+    /// wider than the orchestrator's `--allow-tool` scope.
+    #[arg(long = "sub-agent-allow-tool", value_name = "NAME")]
+    pub sub_agent_allow_tool: Vec<String>,
 }
 
 enum CliResultProvider {
@@ -480,6 +508,15 @@ impl ChainDecoder for CliChainDecoder {
 
 /// Execute the agent CLI command.
 pub fn run(args: AgentArgs) -> anyhow::Result<()> {
+    // Phase 48: multi-agent orchestration is a strictly opt-in top-level
+    // mode. When `--orchestrate` is set, we delegate to `run_orchestrate`,
+    // which validates the plan against the three hard bounds before any
+    // model is loaded or checkpoint is resolved. When `--orchestrate` is
+    // absent, the command behaves exactly as in Phase 47 — zero behavior
+    // change for non-orchestrating use.
+    if args.orchestrate {
+        return run_orchestrate(args);
+    }
     // Validate sandboxed-execution config first so operator errors surface
     // before any model is loaded or checkpoint is resolved.
     if args.execute_tools {
@@ -693,4 +730,311 @@ fn validate_sandbox_config(args: &AgentArgs) -> anyhow::Result<()> {
         ));
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Phase 48: Multi-agent orchestration CLI
+// ---------------------------------------------------------------------------
+
+/// Run the agent in multi-agent orchestration mode (Phase 48,
+/// `ARCHITECTURE_V4.md` §62).
+///
+/// Validates the [`DelegationPlan`] against the three hard bounds (sub-agent
+/// count, total execution time budget, sandbox scope containment) before
+/// any model is loaded, so operator errors surface immediately. Then runs
+/// every sub-chain under the bounds and prints one JSONL outcome per
+/// sub-task, ready to feed back into an orchestrator's own context.
+fn run_orchestrate(args: AgentArgs) -> anyhow::Result<()> {
+    validate_orchestration_config(&args)?;
+    let plan_path = args.delegation_plan.as_ref().expect("checked");
+    let plan_json = fs::read_to_string(plan_path).map_err(|error| {
+        anyhow::anyhow!(
+            "cannot read --delegation-plan {}: {error}",
+            plan_path.display()
+        )
+    })?;
+    let plan: DelegationPlan = serde_json::from_str(&plan_json).map_err(|error| {
+        anyhow::anyhow!(
+            "invalid DelegationPlan JSON at {}: {error}",
+            plan_path.display()
+        )
+    })?;
+
+    // Build the orchestrator's own authorization scope from `--allow-tool`
+    // (the top-level operator decision). Sub-agent scopes are narrowed
+    // further via `--sub-agent-allow-tool` and `AuthorizationScope::intersect`.
+    let mut orchestrator_scope = AuthorizationScope::empty();
+    for name in &args.allow_tool {
+        orchestrator_scope
+            .enable(name)
+            .map_err(|error| anyhow::anyhow!("invalid --allow-tool value: {error}"))?;
+    }
+    let limits = OrchestrationLimits {
+        max_sub_agents: args.max_sub_agents,
+        max_total_time_ms: args.max_orchestration_budget_ms,
+    };
+    let orchestrator = Orchestrator::new(limits, orchestrator_scope.clone())
+        .map_err(|error| anyhow::anyhow!("orchestrator configuration error: {error}"))?;
+    // Plan validation runs against all three hard bounds before any model
+    // is loaded. A plan that exceeds the ceilings is rejected immediately.
+    orchestrator
+        .validate_plan(&plan)
+        .map_err(|error| anyhow::anyhow!("delegation plan rejected: {error}"))?;
+
+    // Resolve the shared model+tokenizer+config once; the per-sub-task
+    // decoder factory rebuilds a fresh `InferenceEngine` per sub-chain so
+    // each sub-chain owns its own `&mut` decoder (Phase 48 §1.4: the engine
+    // cannot be `Clone`d across threads for the source release).
+    let run_config = TrainingRunConfig::from_toml(&args.config)?;
+    let run_device = run_config.device()?;
+    let dtype = run_config.dtype_for_device(&run_device)?.to_candle();
+    let model_path = match args.model.clone() {
+        Some(path) => path,
+        None => default_model_path(&run_config.train.checkpoint_dir)?,
+    };
+    let tokenizer_path = args
+        .tokenizer
+        .clone()
+        .or_else(|| run_config.tokenizer_path.clone())
+        .or_else(|| run_config.tokenizer_save_path.clone())
+        .unwrap_or_else(|| run_config.train.checkpoint_dir.join("tokenizer.json"));
+    let sampler = if args.greedy {
+        Sampler::greedy()
+    } else {
+        Sampler::top_k_top_p(
+            args.temperature,
+            Some(args.top_k),
+            Some(args.top_p),
+            args.seed,
+        )?
+    };
+    let thinking = parse_thinking_mode(&args.thinking)?;
+    let safety_mode = parse_safety_mode(&args.safety)?;
+    let result_root = fs::canonicalize(&args.result_root).map_err(|error| {
+        anyhow::anyhow!(
+            "cannot resolve --result-root {}: {error}",
+            args.result_root.display()
+        )
+    })?;
+    let definitions: Vec<ToolDefinition> = plan
+        .sub_tasks
+        .iter()
+        .flat_map(|sub| sub.tools.iter().cloned())
+        .collect();
+    let tool_calling = ToolCallingConfig::new(definitions.clone(), ToolChoice::Auto)?;
+    let shared = std::sync::Arc::new(SubChainShared {
+        run_config,
+        model_path,
+        tokenizer_path,
+        dtype,
+        run_device,
+        tool_calling,
+        sampler,
+        thinking,
+        safety_mode,
+        safety_audit_log: args.safety_audit_log.clone(),
+        result_root,
+        sub_agent_allow: args.sub_agent_allow_tool.clone(),
+        exec_timeout_ms: args.exec_timeout_ms,
+        exec_max_output_bytes: args.exec_max_output_bytes,
+        exec_workdir: args.exec_workdir.clone(),
+    });
+    let jsonl = args.jsonl;
+    let shared_for_closure = shared.clone();
+    // Build the per-sub-task decoder factory. Each call constructs a fresh
+    // engine + sandbox, so sub-chains are fully independent.
+    let outcomes = orchestrator.run::<CliChainDecoder, _>(&plan, |sub| {
+        build_sub_chain_decoder(sub, &shared_for_closure)
+            .map_err(|error| AgentError::Config(error.to_string()))
+    })?;
+
+    print_orchestration_outcomes(&outcomes, jsonl);
+    Ok(())
+}
+
+/// Shared, immutable configuration for every sub-chain in one orchestration
+/// run. Wrapped in an `Arc` so the per-sub-task decoder factory closure can
+/// borrow it cheaply.
+struct SubChainShared {
+    run_config: TrainingRunConfig,
+    model_path: PathBuf,
+    tokenizer_path: PathBuf,
+    dtype: DType,
+    run_device: aarambh_studio_core::Device,
+    tool_calling: ToolCallingConfig,
+    sampler: Sampler,
+    thinking: ThinkingMode,
+    safety_mode: aarambh_studio_safety::SafetyMode,
+    safety_audit_log: PathBuf,
+    result_root: PathBuf,
+    sub_agent_allow: Vec<String>,
+    exec_timeout_ms: u64,
+    exec_max_output_bytes: usize,
+    exec_workdir: Option<PathBuf>,
+}
+
+/// Build a fresh `(CliChainDecoder, SandboxedToolProvider)` for one sub-task.
+/// Each sub-chain gets its own `InferenceEngine` and its own `ToolSandbox`
+/// constructed with the sub-task's narrowed [`AuthorizationScope`]. Returns
+/// `anyhow::Result`; the orchestrator's `run` closure converts the error to
+/// `AgentError::Config` for the chain-level error path.
+fn build_sub_chain_decoder(
+    sub: &DelegatedSubTask,
+    shared: &SubChainShared,
+) -> anyhow::Result<(CliChainDecoder, SandboxedToolProvider)> {
+    let device = shared.run_device.to_candle()?;
+    let engine = InferenceEngine::from_paths_with_dtype(
+        shared.model_path.clone(),
+        &shared.run_config.model,
+        shared.tokenizer_path.clone(),
+        device,
+        shared.dtype,
+    )?;
+    let mut sub_scope = sub.authorization.clone();
+    // Belt-and-braces: narrow further by --sub-agent-allow-tool, which
+    // is the operator's per-sub-agent restriction. intersect() is
+    // already applied at validate_plan time against the orchestrator's
+    // scope, so this is a strict narrowing only.
+    if !shared.sub_agent_allow.is_empty() {
+        let mut nar = AuthorizationScope::empty();
+        for name in &shared.sub_agent_allow {
+            nar.enable(name)
+                .map_err(|error| anyhow::anyhow!("invalid --sub-agent-allow-tool: {error}"))?;
+        }
+        sub_scope = sub_scope.intersect(&nar);
+    }
+    let sub_limits = SandboxLimits {
+        timeout_ms: shared.exec_timeout_ms,
+        max_output_bytes: shared.exec_max_output_bytes,
+        max_args_bytes: aarambh_studio_agent::DEFAULT_MAX_ARGS_BYTES,
+    };
+    let mut sandbox = ToolSandbox::new(sub_scope, sub_limits)
+        .map_err(|error| anyhow::anyhow!("sub-agent sandbox error: {error}"))?;
+    sandbox
+        .register_definitions(&sub.tools)
+        .map_err(|error| anyhow::anyhow!("sub-agent definitions error: {error}"))?;
+    // Register the read_file_in_workdir executor for any sub-task that
+    // declares it and whose narrowed scope authorizes it.
+    if sub.tools.iter().any(|t| t.name == ReadFileInWorkdir::NAME)
+        && let Some(workdir) = &shared.exec_workdir
+    {
+        let executor = ReadFileInWorkdir::new(workdir)
+            .map_err(|error| anyhow::anyhow!("--exec-workdir error: {error}"))?;
+        sandbox
+            .register_executor(Box::new(executor))
+            .map_err(|error| anyhow::anyhow!("executor registration error: {error}"))?;
+    }
+    // Register the in-memory StaticLookup executor for any sub-task that
+    // declares the "lookup" capability. Useful for smoke runs and
+    // deterministic demos. The table is empty here; a real run would supply
+    // a populated table (e.g. loaded from a JSON fixture).
+    if sub.tools.iter().any(|t| t.name == "lookup") {
+        let table = std::collections::HashMap::new();
+        sandbox
+            .register_executor(Box::new(StaticLookup::new(table)))
+            .map_err(|error| anyhow::anyhow!("lookup executor error: {error}"))?;
+    }
+    let provider = SandboxedToolProvider::new(sandbox);
+    // Build a fresh SafetyInspector per sub-chain so each sub-chain owns
+    // its own audit state (Phase 48 §1.4: shared &mut across sub-chains is
+    // not safe for the source release).
+    let safety = SafetyPolicy::for_mode(shared.safety_mode)
+        .map(|policy| SafetyInspector::new(policy.with_audit_path(&shared.safety_audit_log)));
+    let decoder = CliChainDecoder {
+        engine,
+        run_config: shared.run_config.clone(),
+        dtype: shared.dtype,
+        tool_calling: shared.tool_calling.clone(),
+        sampler: shared.sampler.clone(),
+        thinking: shared.thinking,
+        safety,
+        result_root: shared.result_root.clone(),
+        vision_runtime: None,
+        document_runtime: None,
+        projected_media: None,
+    };
+    Ok((decoder, provider))
+}
+
+/// Validate the orchestration config before any model is loaded, so
+/// operator errors (missing `--delegation-plan`, conflicting flags)
+/// surface immediately rather than after a checkpoint is resolved.
+fn validate_orchestration_config(args: &AgentArgs) -> anyhow::Result<()> {
+    if args.delegation_plan.is_none() {
+        return Err(anyhow::anyhow!(
+            "--orchestrate requires --delegation-plan <PATH> pointing at a JSON DelegationPlan"
+        ));
+    }
+    if args.allow_tool.is_empty() {
+        return Err(anyhow::anyhow!(
+            "--orchestrate requires at least one --allow-tool <NAME> to authorize the orchestrator's top-level scope"
+        ));
+    }
+    // max_sub_agents and max_orchestration_budget_ms are validated by
+    // OrchestrationLimits::validate when the orchestrator is built.
+    Ok(())
+}
+
+/// Print the per-sub-task outcomes either as JSONL (one event per sub-task)
+/// or as a human-readable summary. Mirrors the print_event style used by the
+/// single-chain path.
+fn print_orchestration_outcomes(outcomes: &[SubChainOutcome], jsonl: bool) {
+    if jsonl {
+        for outcome in outcomes {
+            let _ = serde_json::to_string(outcome).map(|line| println!("{line}"));
+        }
+        let summary = json!({
+            "type": "orchestration_metrics",
+            "sub_task_count": outcomes.len(),
+            "completed": outcomes
+                .iter()
+                .filter(|o| o.status == SubChainStatus::Completed)
+                .count(),
+            "failed": outcomes
+                .iter()
+                .filter(|o| o.status == SubChainStatus::Failed)
+                .count(),
+            "budget_exceeded": outcomes
+                .iter()
+                .filter(|o| o.status == SubChainStatus::BudgetExceeded)
+                .count(),
+            "scope_violations": outcomes
+                .iter()
+                .filter(|o| o.status == SubChainStatus::ScopeViolation)
+                .count(),
+            "total_elapsed_ms": outcomes.iter().map(|o| o.elapsed_ms).sum::<u64>(),
+        });
+        println!("{summary}");
+        return;
+    }
+    for outcome in outcomes {
+        eprintln!(
+            "[orchestrator] {} status={:?} elapsed_ms={} call_id={}",
+            outcome.sub_task_id,
+            outcome.status,
+            outcome.elapsed_ms,
+            outcome.aggregated_result.call_id,
+        );
+    }
+    eprintln!(
+        "orchestration_complete sub_tasks={} completed={} failed={} budget_exceeded={} scope_violations={} total_elapsed_ms={}",
+        outcomes.len(),
+        outcomes
+            .iter()
+            .filter(|o| o.status == SubChainStatus::Completed)
+            .count(),
+        outcomes
+            .iter()
+            .filter(|o| o.status == SubChainStatus::Failed)
+            .count(),
+        outcomes
+            .iter()
+            .filter(|o| o.status == SubChainStatus::BudgetExceeded)
+            .count(),
+        outcomes
+            .iter()
+            .filter(|o| o.status == SubChainStatus::ScopeViolation)
+            .count(),
+        outcomes.iter().map(|o| o.elapsed_ms).sum::<u64>(),
+    );
 }

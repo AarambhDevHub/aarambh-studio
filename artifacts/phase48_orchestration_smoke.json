@@ -1,0 +1,21 @@
+{
+  "phase": 48,
+  "title": "Multi-Agent Orchestration",
+  "agent_unit_tests": "passed",
+  "cli_flags_surface": [
+    "--orchestrate",
+    "--delegation-plan",
+    "--max-sub-agents",
+    "--max-orchestration-budget-ms",
+    "--sub-agent-allow-tool"
+  ],
+  "max_sub_agent_count_ceiling": true,
+  "total_execution_time_budget": true,
+  "sandbox_scope_containment_via_intersect": true,
+  "result_aggregation_via_existing_toolresult_path": true,
+  "failure_isolation_per_sub_chain": true,
+  "no_new_crate": true,
+  "no_new_dependency": true,
+  "additive_to_phase_47_sandbox": true,
+  "honesty_note": "Orchestration is purely additive to Phase 47: each sub-chain is a ToolChain backed by a SandboxedToolProvider constructed with the sub-task's narrowed AuthorizationScope (via AuthorizationScope::intersect). Sub-chains run sequentially (CPU-first honest default); true parallelism would require a Send+Sync ChainDecoder, which is out of scope for the source release because the InferenceEngine holds a Candle device that is not safely cloneable across threads. The 5 roadmap-named acceptance tests prove the three hard bounds (sub-agent count, total time budget, scope containment) plus aggregation and failure isolation invariants using fake decoders and real sandbox executors, running in milliseconds."
+}

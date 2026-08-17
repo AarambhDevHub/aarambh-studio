@@ -47,7 +47,7 @@ impl From<std::io::Error> for AgentError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 /// Resource and context policy for one tool-use chain.
 pub struct ToolChainConfig {
     /// Maximum caller-executed tool calls.

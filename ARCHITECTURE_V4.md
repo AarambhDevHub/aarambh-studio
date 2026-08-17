@@ -884,6 +884,23 @@ sibling sub-agents' results, and the orchestrator's aggregation step
 receives an explicit failure marker for that sub-chain rather than a
 missing or malformed entry.
 
+> **Implemented in v4.0.0-alpha.8** as `crates/aarambh-studio-agent/src/
+> orchestrator.rs`. Each sub-chain is a `ToolChain` backed by a
+> `SandboxedToolProvider` constructed with the sub-task's narrowed
+> `AuthorizationScope` (via `AuthorizationScope::intersect`), so
+> orchestration plugs into the existing chain with **zero chain changes**
+> — sub-chain outputs re-enter the orchestrator's own context via the
+> unchanged `result_ingestion` path, applied recursively. The three hard
+> bounds (max sub-agent count, total execution time budget, sandbox scope
+> containment) are operator-set and enforced at `validate_plan` time
+> before any sub-chain runs; failure isolation is via `catch_unwind`.
+> Sub-chains run sequentially (CPU-first honest default — true parallelism
+> is gated on a future `Send + Sync` `ChainDecoder`, out of scope for the
+> source release because the `InferenceEngine` holds a Candle device that
+> is not safely cloneable across threads). See
+> `docs/phase48_orchestration.md` for the runbook and the honesty
+> boundary.
+
 ---
 
 ## 63. Retrieval-Augmented Generation (RAG)
