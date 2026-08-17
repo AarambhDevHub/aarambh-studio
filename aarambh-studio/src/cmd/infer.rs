@@ -171,7 +171,7 @@ pub struct InferArgs {
     /// Capability probe manifest path (enables self-learning forgetting analysis).
     #[arg(long)]
     pub forgetting_manifest: Option<PathBuf>,
-    /// Forgetting curves store path (defaults to <state-dir>/forgetting_curves.json).
+    /// Forgetting curves store path (defaults to `<state-dir>/forgetting_curves.json`).
     #[arg(long)]
     pub forgetting_store: Option<PathBuf>,
     /// Optional JSONL export path for self-learning forgetting deltas.

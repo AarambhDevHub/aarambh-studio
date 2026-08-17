@@ -40,7 +40,7 @@ pub struct ForgettingArgs {
     /// Capability probe manifest path (enables forgetting analysis).
     #[arg(long)]
     pub forgetting_manifest: Option<PathBuf>,
-    /// Forgetting curves store path (defaults to <state-dir>/forgetting_curves.json).
+    /// Forgetting curves store path (defaults to `<state-dir>/forgetting_curves.json`).
     #[arg(long)]
     pub forgetting_store: Option<PathBuf>,
     /// Optional JSONL export path for forgetting deltas.
