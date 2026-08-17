@@ -13,39 +13,55 @@ use serde::Deserialize;
 #[derive(Debug, Args)]
 /// Start the local OpenAI-compatible inference server.
 pub struct ServeArgs {
+    /// Training/model TOML configuration (provides architecture + device).
     #[arg(long, default_value = "configs/tiny_shakespeare.toml")]
     config: PathBuf,
+    /// Model checkpoint to serve.
     #[arg(long)]
     model: PathBuf,
+    /// Optional tokenizer JSON path; falls back to the configured tokenizer.
     #[arg(long)]
     tokenizer: Option<PathBuf>,
+    /// Public model id advertised by the OpenAI-compatible API.
     #[arg(long, default_value = "aarambh-studio-local")]
     model_id: String,
+    /// Bind host IP address.
     #[arg(long, default_value = "127.0.0.1")]
     host: IpAddr,
+    /// Bind TCP port.
     #[arg(long, default_value_t = 8080)]
     port: u16,
+    /// Maximum requests processed in a single continuous batch.
     #[arg(long, default_value_t = 8)]
     max_batch_size: usize,
+    /// Maximum pending requests queued before backpressure applies.
     #[arg(long, default_value_t = 128)]
     queue_capacity: usize,
+    /// Milliseconds to wait for additional requests before flushing a batch.
     #[arg(long, default_value_t = 2)]
     batch_wait_ms: u64,
+    /// Maximum tokens prefilled per chunked prefill pass.
     #[arg(long, default_value_t = 128)]
     prefill_chunk_size: usize,
+    /// Maximum total tokens (prompt + completion) accepted per request.
     #[arg(long, default_value_t = 2048)]
     max_request_tokens: usize,
     #[arg(long, default_value = "none")]
     /// Default thinking budget: none, low, medium, high, or max.
     thinking: String,
+    /// Optional JSON tool definitions file advertised to clients.
     #[arg(long)]
     tools: Option<PathBuf>,
+    /// Safety policy: strict, permissive, research, or none.
     #[arg(long, default_value = "strict")]
     safety: String,
+    /// JSONL safety audit log path.
     #[arg(long, default_value = "safety_audit.jsonl")]
     safety_audit_log: PathBuf,
+    /// Environment variable name holding the optional bearer API key.
     #[arg(long, default_value = "AARAMBH_STUDIO_STUDIO_API_KEY")]
     api_key_env: String,
+    /// Allowed CORS origin(s); repeat to enable multiple origins.
     #[arg(long)]
     cors_origin: Vec<String>,
 }

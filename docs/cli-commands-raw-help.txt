@@ -1,0 +1,1946 @@
+================================================================================
+aarambh-studio CLI — Full Command Reference (auto-generated from --help)
+Version: aarambh-studio 4.0.0-alpha.7
+Regenerated after adding clap help text to every command/flag in the .rs sources.
+================================================================================
+
+### Top-level
+```
+Aarambh AI command line tools
+
+Usage: aarambh-studio <COMMAND>
+
+Commands:
+  agent      Run a bounded caller-executed long-horizon tool-use chain
+  train      Train a model checkpoint from a TOML training configuration
+  infer      Generate text, multimodal, tool-use, speculative, best-of-N, or self-learning completions from a trained checkpoint
+  eval       Evaluate a checkpoint on capability, forgetting, or KV-cache probes
+  quantise   Quantise a trained checkpoint into a smaller GGUF format
+  convert    Convert checkpoints between HF SafeTensors and GGUF, or expand vocabularies
+  distill    Distil a smaller student model from a frozen local or dataset teacher
+  finetune   Fine-tune adapters with SFT, DoRA, GRPO, DPO, RLAIF, or merge
+  selflearn  Self-learning loop operator: start, flush, replay, stats, or reset
+  serve      Start the local OpenAI-compatible inference server
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+================================================================================
+### train
+```
+Train a model checkpoint from a TOML training configuration
+
+Usage: aarambh-studio train --config <CONFIG>
+
+Options:
+      --config <CONFIG>  Training/model TOML configuration path
+  -h, --help             Print help
+```
+
+================================================================================
+### infer
+```
+Generate text, multimodal, tool-use, speculative, best-of-N, or self-learning completions from a trained checkpoint
+
+Usage: aarambh-studio infer [OPTIONS] --prompt <PROMPT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --model <MODEL>
+          Model checkpoint path; falls back to best.json/latest.json pointer
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the configured tokenizer
+      --image <IMAGE>
+          Image file path for vision (VQA) inference
+      --video <VIDEO>
+          Video file path for temporal video inference (mutually exclusive with --image)
+      --document <DOCUMENT>
+          Document file path for layout-aware document inference
+      --audio <AUDIO>
+          Audio file path for audio-language inference
+      --pages <PAGES>
+          Comma-separated 1-based page numbers to rasterise from the document
+      --document-dpi <DOCUMENT_DPI>
+          DPI used when rasterising document pages to images
+      --max-document-pages <MAX_DOCUMENT_PAGES>
+          Maximum number of document pages to rasterise
+      --frames <FRAMES>
+          Number of frames to sample from a --video input
+      --frame-sampling <FRAME_SAMPLING>
+          Frame sampling strategy for --video: uniform or scene-aware
+      --prompt <PROMPT>
+          Prompt text (or chat-template user message) fed to the model
+      --max-tokens <MAX_TOKENS>
+          Maximum number of new tokens generated [default: 256]
+      --temperature <TEMPERATURE>
+          Sampling temperature for stochastic decoding [default: 0.7]
+      --top-p <TOP_P>
+          Nucleus sampling probability mass [default: 0.9]
+      --top-k <TOP_K>
+          Top-k sampling width [default: 50]
+      --seed <SEED>
+          Deterministic sampler seed
+      --thinking <THINKING>
+          Thinking budget: none, low, medium, high, or max [default: none]
+      --predict-view
+          Render the live next-token prediction view to stdout
+      --stream
+          Stream tokens to stdout as they are generated
+      --greedy
+          Use greedy (argmax) decoding instead of stochastic sampling
+      --speculative
+          Enable speculative decoding with an external draft model or MTP head
+      --draft-model <DRAFT_MODEL>
+          External draft model checkpoint path (requires --draft-config)
+      --draft-config <DRAFT_CONFIG>
+          External draft model TOML config path
+      --draft-tokenizer <DRAFT_TOKENIZER>
+          External draft model tokenizer JSON path (defaults to the target)
+      --draft-tokens <DRAFT_TOKENS>
+          Number of tokens the draft model proposes per target forward (MTP width)
+      --stats
+          Print generation, DSA, and MoE statistics to stderr after decoding
+      --tools <TOOLS>
+          JSON tool definitions file (native or OpenAI-compatible) for tool calling
+      --tool-choice <TOOL_CHOICE>
+          Tool-choice policy: auto, none, required, or a named tool [default: auto]
+      --safety <SAFETY>
+          Safety policy: strict, permissive, research, or none [default: strict]
+      --safety-audit-log <SAFETY_AUDIT_LOG>
+          JSONL safety audit log path [default: safety_audit.jsonl]
+      --self-learn <SELF_LEARN>
+          Self-learning mode: disabled, cpu, or gpu [default: disabled]
+      --replay-path <REPLAY_PATH>
+          Self-learning replay JSONL path (defaults to data/replay.jsonl)
+      --self-learn-state-dir <SELF_LEARN_STATE_DIR>
+          Self-learning state directory for adapters and metrics [default: adapters/selflearn]
+      --self-learn-reference <SELF_LEARN_REFERENCE>
+          Reference (frozen) checkpoint used for KL during self-learning
+      --self-learn-verifier <SELF_LEARN_VERIFIER>
+          Built-in verifier kind: none, math, format, or math-format [default: none]
+      --self-learn-vision-verifier <SELF_LEARN_VISION_VERIFIER>
+          Grounded vision verifier: none, auto, count, color, presence, or exact [default: none]
+      --self-learn-ground-truth <SELF_LEARN_GROUND_TRUTH>
+          Ground-truth answer required when a verifier other than none is used
+      --forgetting-manifest <FORGETTING_MANIFEST>
+          Capability probe manifest path (enables self-learning forgetting analysis)
+      --forgetting-store <FORGETTING_STORE>
+          Forgetting curves store path (defaults to <state-dir>/forgetting_curves.json)
+      --forgetting-jsonl <FORGETTING_JSONL>
+          Optional JSONL export path for self-learning forgetting deltas
+      --forgetting-threshold <FORGETTING_THRESHOLD>
+          Absolute capability-score delta treated as significant forgetting [default: 0.02]
+      --forgetting-max-examples <FORGETTING_MAX_EXAMPLES>
+          Maximum examples evaluated per capability probe during forgetting checks [default: 8]
+      --forgetting-allow-code-exec
+          Allow code execution in capability probes during forgetting checks
+      --forgetting-require-all-probes
+          Require every manifest probe to run; otherwise missing probes are skipped
+      --forgetting-baseline-id <FORGETTING_BASELINE_ID>
+          Baseline checkpoint or session id used to compute forgetting deltas
+      --best-of-n <BEST_OF_N>
+          Generate N independent candidate completions and select the best one (Phase 45). When set, requires a stochastic sampler (use --temperature > 0 or --top-k/--top-p) for N > 1; greedy best-of-N is degenerate
+      --selection <SELECTION>
+          Selection strategy for best-of-N: verifier, self-consistency, majority, or process-reward (Phase 45). Defaults to self-consistency [default: self-consistency]
+      --ground-truth <GROUND_TRUTH>
+          Ground-truth answer required when --selection verifier is used (Phase 45)
+  -h, --help
+          Print help
+```
+
+================================================================================
+### agent
+```
+Run a bounded caller-executed long-horizon tool-use chain
+
+Usage: aarambh-studio agent [OPTIONS] --tools <TOOLS> --prompt <PROMPT>
+
+Options:
+      --config <CONFIG>
+          Training/model configuration [default: configs/tiny_shakespeare.toml]
+      --model <MODEL>
+          Model checkpoint; defaults to the configured latest/best pointer
+      --tokenizer <TOKENIZER>
+          Tokenizer JSON; defaults to the configured tokenizer path
+      --tools <TOOLS>
+          Native or OpenAI-compatible JSON tool definitions
+      --prompt <PROMPT>
+          Initial user request
+      --max-steps <MAX_STEPS>
+          Maximum caller-executed tool calls [default: 8]
+      --max-tokens <MAX_TOKENS>
+          Maximum generated tokens per model decision [default: 256]
+      --temperature <TEMPERATURE>
+          Sampling temperature [default: 0.7]
+      --top-p <TOP_P>
+          Nucleus sampling probability [default: 0.9]
+      --top-k <TOP_K>
+          Top-k sampling width [default: 50]
+      --seed <SEED>
+          Deterministic sampler seed
+      --greedy
+          Use greedy decoding
+      --thinking <THINKING>
+          Thinking budget: none, low, medium, high, or max [default: none]
+      --results <RESULTS>
+          Scripted JSONL tool results; stdin JSONL is used when omitted
+      --result-root <RESULT_ROOT>
+          Root that all image, video, and document result paths must stay under [default: .]
+      --eviction <EVICTION>
+          Context policy: drop-oldest or summarise [default: drop-oldest]
+      --keep-recent <KEEP_RECENT>
+          Recent completed exchanges protected from eviction [default: 4]
+      --summary-tokens <SUMMARY_TOKENS>
+          Maximum model-generated summary tokens per eviction [default: 128]
+      --jsonl
+          Emit machine-readable lifecycle events on stdout
+      --safety <SAFETY>
+          Safety mode applied to prompts, results, calls, and final output [default: strict]
+      --safety-audit-log <SAFETY_AUDIT_LOG>
+          JSONL safety audit path [default: safety_audit.jsonl]
+      --execute-tools
+          Execute tool calls inside the sandbox instead of reading caller results from stdin/replay (Phase 47). Only tools listed via `--allow-tool` are executable; everything else is a hard refusal
+      --allow-tool <NAME>
+          Operator-authorized tool name. Repeat to enable multiple tools. Only these names may ever execute when `--execute-tools` is set
+      --exec-timeout-ms <EXEC_TIMEOUT_MS>
+          Per-call wall-clock ceiling for sandboxed execution, in milliseconds [default: 5000]
+      --exec-max-output-bytes <EXEC_MAX_OUTPUT_BYTES>
+          Maximum output payload bytes a sandboxed executor may return [default: 65536]
+      --exec-workdir <EXEC_WORKDIR>
+          Working directory for the `read_file_in_workdir` executor. The executor is registered only when this is set; it can never read outside this directory
+  -h, --help
+          Print help
+```
+
+================================================================================
+### eval
+```
+Evaluate a checkpoint on capability, forgetting, or KV-cache probes
+
+Usage: aarambh-studio eval [OPTIONS]
+
+Options:
+      --config <CONFIG>
+          Optional training/model TOML config (required unless --compare is used)
+      --model <MODEL>
+          Model checkpoint path; falls back to best.json/latest.json pointer
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the configured tokenizer
+      --tasks <TASKS>
+          Comma-separated task list (e.g. ppl,gsm8k,humaneval) [default: ppl]
+      --data-dir <DATA_DIR>
+          Directory containing per-task evaluation datasets [default: data/eval]
+      --max-examples <MAX_EXAMPLES>
+          Optional cap on the number of examples evaluated per task
+      --max-new-tokens <MAX_NEW_TOKENS>
+          Maximum new tokens generated per generative task [default: 128]
+      --thinking <THINKING>
+          Thinking budget: none, low, medium, high, or max (Phase 39) [default: none]
+      --agent-max-steps <AGENT_MAX_STEPS>
+          Maximum tool-call steps for agent-style tasks [default: 8]
+      --allow-code-exec
+          Allow code execution in agent-style tasks (enables the code tool)
+      --out <OUT>
+          Optional JSON output path for the scorecard
+      --markdown <MARKDOWN>
+          Optional Markdown output path for the scorecard
+      --compare <COMPARE> <COMPARE>
+          Compare two scorecards (takes exactly two JSON scorecard paths)
+      --qat-compare
+          Compare a QAT checkpoint against its unquantised baseline
+      --baseline-model <BASELINE_MODEL>
+          Unquantised baseline checkpoint used as the --qat-compare reference
+      --forgetting-manifest <FORGETTING_MANIFEST>
+          Capability probe manifest path (enables forgetting analysis)
+      --forgetting-store <FORGETTING_STORE>
+          Forgetting curves store path (read and updated) [default: checkpoints/forgetting/curves.json]
+      --checkpoint-id <CHECKPOINT_ID>
+          Current checkpoint or session id recorded under the manifest
+      --baseline-id <BASELINE_ID>
+          Baseline checkpoint or session id used to compute forgetting deltas
+      --significance-threshold <SIGNIFICANCE_THRESHOLD>
+          Absolute capability-score delta treated as significant forgetting [default: 0.02]
+      --forgetting-jsonl <FORGETTING_JSONL>
+          Optional JSONL export path for forgetting deltas
+      --require-all-probes
+          Require every manifest probe to run; otherwise missing probes are skipped
+      --kv-cache-report
+          Print per-layer KV-cache bytes/token by attention kind and exit (v4 Phase 41)
+      --best-of-n <BEST_OF_N>
+          Generate N independent candidate completions per generative task and record single-sample vs best-of-N accuracy in the scorecard details (Phase 45). When set, gsm8k and humaneval tasks compute both
+      --best-of-n-selection <BEST_OF_N_SELECTION>
+          Selection strategy for best-of-N evaluation: verifier, self-consistency, majority, or process-reward (Phase 45). Defaults to self-consistency [default: self-consistency]
+      --best-of-n-seed <BEST_OF_N_SEED>
+          Base RNG seed for best-of-N candidate sampling (Phase 45) [default: 0]
+  -h, --help
+          Print help
+```
+
+================================================================================
+### quantise
+```
+Quantise a trained checkpoint into a smaller GGUF format
+
+Usage: aarambh-studio quantise [OPTIONS] --model <MODEL> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --model <MODEL>
+          Source model checkpoint path to quantise
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the configured tokenizer
+      --method <METHOD>
+          Quantisation method: int8, awq, gptq, q4_k_m, q5_k_m, or q8_0 [default: int8]
+      --bits <BITS>
+          Target quantisation bit width (4 for awq/gptq, 5 for q5_k_m, 8 for int8/q8_0) [default: 8]
+      --calibration-data <CALIBRATION_DATA>
+          Calibration plaintext dataset path (required for awq and gptq)
+      --samples <SAMPLES>
+          Maximum calibration samples to draw from the dataset [default: 128]
+      --output <OUTPUT>
+          Output quantised GGUF checkpoint path
+  -h, --help
+          Print help
+```
+
+================================================================================
+### convert
+```
+Convert checkpoints between HF SafeTensors and GGUF, or expand vocabularies
+
+Usage: aarambh-studio convert [OPTIONS] --input <INPUT> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --input <INPUT>
+          Source checkpoint path to convert
+      --output <OUTPUT>
+          Output converted checkpoint path
+      --arch <ARCH>
+          HF architecture family: llama3 (used for HF -> SafeTensors migration) [default: llama3]
+      --gguf
+          Emit a GGUF checkpoint instead of native SafeTensors
+      --format <FORMAT>
+          GGUF quantisation format: q4_k_m, q5_k_m, or q8_0 [default: q4_k_m]
+      --upgrade-video-vocab
+          Expand the SafeTensors model with the Phase 35 video vocabulary
+      --upgrade-document-vocab
+          Expand the SafeTensors model with the Phase 36 document vocabulary
+      --upgrade-audio-vocab
+          Expand the SafeTensors model with the Phase 42 audio vocabulary
+      --tokenizer <TOKENIZER>
+          Source tokenizer JSON path (required for vocabulary upgrades)
+      --output-tokenizer <OUTPUT_TOKENIZER>
+          Output tokenizer JSON path for the upgraded vocabulary
+  -h, --help
+          Print help
+```
+
+================================================================================
+### distill
+```
+Distil a smaller student model from a frozen local or dataset teacher
+
+Usage: aarambh-studio distill <COMMAND>
+
+Commands:
+  train            Train a full student on fresh rollouts scored by a frozen teacher
+  prepare-offline  Generate one static local-teacher completion per prompt
+  train-offline    Train the matched static-completion offline control
+  evaluate         Score fresh student rollouts and write alignment reports
+  help             Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+```
+
+================================================================================
+### finetune
+```
+Fine-tune adapters with SFT, DoRA, GRPO, DPO, RLAIF, or merge
+
+Usage: aarambh-studio finetune <COMMAND>
+
+Commands:
+  sft             Supervised fine-tune a LoRA adapter on a chat dataset
+  qlora           Supervised fine-tune a QLoRA adapter on a chat dataset
+  tool-sft        Supervised fine-tune a LoRA adapter on a tool-calling dataset
+  tool-qlora      Supervised fine-tune a QLoRA adapter on a tool-calling dataset
+  dora            Supervised fine-tune a weight-decomposed DoRA adapter
+  qdora           Supervised fine-tune a quantised weight-decomposed QDoRA adapter
+  vlm-dora        DoRA fine-tune a vision-language adapter on image VQA data
+  vlm-qdora       QDoRA fine-tune a vision-language adapter on image VQA data
+  video-dora      DoRA fine-tune a vision-language adapter on video VQA data
+  video-qdora     QDoRA fine-tune a vision-language adapter on video VQA data
+  document-dora   DoRA fine-tune a vision-language adapter on document VQA data
+  document-qdora  QDoRA fine-tune a vision-language adapter on document VQA data
+  audio-dora      DoRA fine-tune a vision-language adapter on audio VQA data
+  audio-qdora     QDoRA fine-tune a vision-language adapter on audio VQA data
+  grpo            Group-relative policy optimisation (verifier-rewarded RL fine-tune)
+  dpo             Direct preference optimisation against (chosen, rejected) pairs
+  qdpo            Direct preference optimisation against (chosen, rejected) pairs on a quantised base
+  rlaif           Phase 46 — RLAIF command-line arguments
+  merge           Merge a trained adapter back into the base checkpoint
+  help            Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+```
+
+================================================================================
+### selflearn
+```
+Self-learning loop operator: start, flush, replay, stats, or reset
+
+Usage: aarambh-studio selflearn <COMMAND>
+
+Commands:
+  start              Run a single self-learning inference (text or vision) step
+  flush-gradients    Flush pending self-learning gradients through the loop optimiser
+  replay             Run a self-learning replay fine-tune over the replay buffer
+  stats              Print replay buffer, metrics, and forgetting-curve statistics
+  forgetting-report  Print the stored forgetting-curve report and exit
+  reset              Delete the replay buffer and self-learning state directory
+  help               Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+```
+
+================================================================================
+### serve
+```
+Start the local OpenAI-compatible inference server
+
+Usage: aarambh-studio serve [OPTIONS] --model <MODEL>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --model <MODEL>
+          Model checkpoint to serve
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the configured tokenizer
+      --model-id <MODEL_ID>
+          Public model id advertised by the OpenAI-compatible API [default: aarambh-studio-local]
+      --host <HOST>
+          Bind host IP address [default: 127.0.0.1]
+      --port <PORT>
+          Bind TCP port [default: 8080]
+      --max-batch-size <MAX_BATCH_SIZE>
+          Maximum requests processed in a single continuous batch [default: 8]
+      --queue-capacity <QUEUE_CAPACITY>
+          Maximum pending requests queued before backpressure applies [default: 128]
+      --batch-wait-ms <BATCH_WAIT_MS>
+          Milliseconds to wait for additional requests before flushing a batch [default: 2]
+      --prefill-chunk-size <PREFILL_CHUNK_SIZE>
+          Maximum tokens prefilled per chunked prefill pass [default: 128]
+      --max-request-tokens <MAX_REQUEST_TOKENS>
+          Maximum total tokens (prompt + completion) accepted per request [default: 2048]
+      --thinking <THINKING>
+          Default thinking budget: none, low, medium, high, or max [default: none]
+      --tools <TOOLS>
+          Optional JSON tool definitions file advertised to clients
+      --safety <SAFETY>
+          Safety policy: strict, permissive, research, or none [default: strict]
+      --safety-audit-log <SAFETY_AUDIT_LOG>
+          JSONL safety audit log path [default: safety_audit.jsonl]
+      --api-key-env <API_KEY_ENV>
+          Environment variable name holding the optional bearer API key [default: AARAMBH_STUDIO_STUDIO_API_KEY]
+      --cors-origin <CORS_ORIGIN>
+          Allowed CORS origin(s); repeat to enable multiple origins
+  -h, --help
+          Print help
+```
+
+================================================================================
+### finetune subcommands
+================================================================================
+#### finetune sft
+```
+Supervised fine-tune a LoRA adapter on a chat dataset
+
+Usage: aarambh-studio finetune sft [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL chat or tool-call training data path
+      --output <OUTPUT>
+          Output adapter directory
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list (e.g. attn.wq,attn.wk,attn.wv,attn.wo) [default: attn.wq,attn.wk,attn.wv,attn.wo]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune qlora
+```
+Supervised fine-tune a QLoRA adapter on a chat dataset
+
+Usage: aarambh-studio finetune qlora [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL chat or tool-call training data path
+      --output <OUTPUT>
+          Output adapter directory
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list (e.g. attn.wq,attn.wk,attn.wv,attn.wo) [default: attn.wq,attn.wk,attn.wv,attn.wo]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune tool-sft
+```
+Supervised fine-tune a LoRA adapter on a tool-calling dataset
+
+Usage: aarambh-studio finetune tool-sft [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL chat or tool-call training data path
+      --output <OUTPUT>
+          Output adapter directory
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list (e.g. attn.wq,attn.wk,attn.wv,attn.wo) [default: attn.wq,attn.wk,attn.wv,attn.wo]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune tool-qlora
+```
+Supervised fine-tune a QLoRA adapter on a tool-calling dataset
+
+Usage: aarambh-studio finetune tool-qlora [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL chat or tool-call training data path
+      --output <OUTPUT>
+          Output adapter directory
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list (e.g. attn.wq,attn.wk,attn.wv,attn.wo) [default: attn.wq,attn.wk,attn.wv,attn.wo]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune dora
+```
+Supervised fine-tune a weight-decomposed DoRA adapter
+
+Usage: aarambh-studio finetune dora [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL chat or tool-call training data path
+      --output <OUTPUT>
+          Output adapter directory
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list (e.g. attn.wq,attn.wk,attn.wv,attn.wo) [default: attn.wq,attn.wk,attn.wv,attn.wo]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune qdora
+```
+Supervised fine-tune a quantised weight-decomposed QDoRA adapter
+
+Usage: aarambh-studio finetune qdora [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL chat or tool-call training data path
+      --output <OUTPUT>
+          Output adapter directory
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list (e.g. attn.wq,attn.wk,attn.wv,attn.wo) [default: attn.wq,attn.wk,attn.wv,attn.wo]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune vlm-dora
+```
+DoRA fine-tune a vision-language adapter on image VQA data
+
+Usage: aarambh-studio finetune vlm-dora [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          VLM training/model TOML configuration (vision encoder + projector + device) [default: configs/vision_vqa_instruct.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL VQA training data path (image, video, document, or audio rows)
+      --output <OUTPUT>
+          Output adapter directory
+      --projector <PROJECTOR>
+          Pretrained vision projector checkpoint path (defaults to the base)
+      --clip-config <CLIP_CONFIG>
+          CLIP vision encoder config JSON path (defaults to the config)
+      --clip-weights <CLIP_WEIGHTS>
+          CLIP vision encoder weights path (defaults to the config)
+      --image-root <IMAGE_ROOT>
+          Root directory that image training paths are resolved against
+      --video-root <VIDEO_ROOT>
+          Root directory that video training paths are resolved against
+      --frames <FRAMES>
+          Number of frames sampled per video (overrides the config)
+      --frame-sampling <FRAME_SAMPLING>
+          Frame sampling strategy: uniform or scene-aware
+      --temporal-encoding <TEMPORAL_ENCODING>
+          Temporal encoding kind for video frames
+      --temporal <TEMPORAL>
+          Optional pretrained temporal encoder checkpoint path
+      --document-root <DOCUMENT_ROOT>
+          Root directory that document training paths are resolved against
+      --document-dpi <DOCUMENT_DPI>
+          DPI used when rasterising document pages to images
+      --max-document-pages <MAX_DOCUMENT_PAGES>
+          Maximum number of document pages to rasterise per row
+      --layout-encoding <LAYOUT_ENCODING>
+          Layout encoding kind for document pages
+      --layout <LAYOUT>
+          Optional pretrained layout-aware projector checkpoint path
+      --freeze-projector
+          Freeze the vision projector during fine-tuning
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list [default: attn.wq,attn.wk,attn.wv,attn.wo,ffn.w_gate,ffn.w_up,ffn.w_down]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune vlm-qdora
+```
+QDoRA fine-tune a vision-language adapter on image VQA data
+
+Usage: aarambh-studio finetune vlm-qdora [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          VLM training/model TOML configuration (vision encoder + projector + device) [default: configs/vision_vqa_instruct.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL VQA training data path (image, video, document, or audio rows)
+      --output <OUTPUT>
+          Output adapter directory
+      --projector <PROJECTOR>
+          Pretrained vision projector checkpoint path (defaults to the base)
+      --clip-config <CLIP_CONFIG>
+          CLIP vision encoder config JSON path (defaults to the config)
+      --clip-weights <CLIP_WEIGHTS>
+          CLIP vision encoder weights path (defaults to the config)
+      --image-root <IMAGE_ROOT>
+          Root directory that image training paths are resolved against
+      --video-root <VIDEO_ROOT>
+          Root directory that video training paths are resolved against
+      --frames <FRAMES>
+          Number of frames sampled per video (overrides the config)
+      --frame-sampling <FRAME_SAMPLING>
+          Frame sampling strategy: uniform or scene-aware
+      --temporal-encoding <TEMPORAL_ENCODING>
+          Temporal encoding kind for video frames
+      --temporal <TEMPORAL>
+          Optional pretrained temporal encoder checkpoint path
+      --document-root <DOCUMENT_ROOT>
+          Root directory that document training paths are resolved against
+      --document-dpi <DOCUMENT_DPI>
+          DPI used when rasterising document pages to images
+      --max-document-pages <MAX_DOCUMENT_PAGES>
+          Maximum number of document pages to rasterise per row
+      --layout-encoding <LAYOUT_ENCODING>
+          Layout encoding kind for document pages
+      --layout <LAYOUT>
+          Optional pretrained layout-aware projector checkpoint path
+      --freeze-projector
+          Freeze the vision projector during fine-tuning
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list [default: attn.wq,attn.wk,attn.wv,attn.wo,ffn.w_gate,ffn.w_up,ffn.w_down]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune video-dora
+```
+DoRA fine-tune a vision-language adapter on video VQA data
+
+Usage: aarambh-studio finetune video-dora [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          VLM training/model TOML configuration (vision encoder + projector + device) [default: configs/vision_vqa_instruct.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL VQA training data path (image, video, document, or audio rows)
+      --output <OUTPUT>
+          Output adapter directory
+      --projector <PROJECTOR>
+          Pretrained vision projector checkpoint path (defaults to the base)
+      --clip-config <CLIP_CONFIG>
+          CLIP vision encoder config JSON path (defaults to the config)
+      --clip-weights <CLIP_WEIGHTS>
+          CLIP vision encoder weights path (defaults to the config)
+      --image-root <IMAGE_ROOT>
+          Root directory that image training paths are resolved against
+      --video-root <VIDEO_ROOT>
+          Root directory that video training paths are resolved against
+      --frames <FRAMES>
+          Number of frames sampled per video (overrides the config)
+      --frame-sampling <FRAME_SAMPLING>
+          Frame sampling strategy: uniform or scene-aware
+      --temporal-encoding <TEMPORAL_ENCODING>
+          Temporal encoding kind for video frames
+      --temporal <TEMPORAL>
+          Optional pretrained temporal encoder checkpoint path
+      --document-root <DOCUMENT_ROOT>
+          Root directory that document training paths are resolved against
+      --document-dpi <DOCUMENT_DPI>
+          DPI used when rasterising document pages to images
+      --max-document-pages <MAX_DOCUMENT_PAGES>
+          Maximum number of document pages to rasterise per row
+      --layout-encoding <LAYOUT_ENCODING>
+          Layout encoding kind for document pages
+      --layout <LAYOUT>
+          Optional pretrained layout-aware projector checkpoint path
+      --freeze-projector
+          Freeze the vision projector during fine-tuning
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list [default: attn.wq,attn.wk,attn.wv,attn.wo,ffn.w_gate,ffn.w_up,ffn.w_down]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune video-qdora
+```
+QDoRA fine-tune a vision-language adapter on video VQA data
+
+Usage: aarambh-studio finetune video-qdora [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          VLM training/model TOML configuration (vision encoder + projector + device) [default: configs/vision_vqa_instruct.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL VQA training data path (image, video, document, or audio rows)
+      --output <OUTPUT>
+          Output adapter directory
+      --projector <PROJECTOR>
+          Pretrained vision projector checkpoint path (defaults to the base)
+      --clip-config <CLIP_CONFIG>
+          CLIP vision encoder config JSON path (defaults to the config)
+      --clip-weights <CLIP_WEIGHTS>
+          CLIP vision encoder weights path (defaults to the config)
+      --image-root <IMAGE_ROOT>
+          Root directory that image training paths are resolved against
+      --video-root <VIDEO_ROOT>
+          Root directory that video training paths are resolved against
+      --frames <FRAMES>
+          Number of frames sampled per video (overrides the config)
+      --frame-sampling <FRAME_SAMPLING>
+          Frame sampling strategy: uniform or scene-aware
+      --temporal-encoding <TEMPORAL_ENCODING>
+          Temporal encoding kind for video frames
+      --temporal <TEMPORAL>
+          Optional pretrained temporal encoder checkpoint path
+      --document-root <DOCUMENT_ROOT>
+          Root directory that document training paths are resolved against
+      --document-dpi <DOCUMENT_DPI>
+          DPI used when rasterising document pages to images
+      --max-document-pages <MAX_DOCUMENT_PAGES>
+          Maximum number of document pages to rasterise per row
+      --layout-encoding <LAYOUT_ENCODING>
+          Layout encoding kind for document pages
+      --layout <LAYOUT>
+          Optional pretrained layout-aware projector checkpoint path
+      --freeze-projector
+          Freeze the vision projector during fine-tuning
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list [default: attn.wq,attn.wk,attn.wv,attn.wo,ffn.w_gate,ffn.w_up,ffn.w_down]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune document-dora
+```
+DoRA fine-tune a vision-language adapter on document VQA data
+
+Usage: aarambh-studio finetune document-dora [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          VLM training/model TOML configuration (vision encoder + projector + device) [default: configs/vision_vqa_instruct.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL VQA training data path (image, video, document, or audio rows)
+      --output <OUTPUT>
+          Output adapter directory
+      --projector <PROJECTOR>
+          Pretrained vision projector checkpoint path (defaults to the base)
+      --clip-config <CLIP_CONFIG>
+          CLIP vision encoder config JSON path (defaults to the config)
+      --clip-weights <CLIP_WEIGHTS>
+          CLIP vision encoder weights path (defaults to the config)
+      --image-root <IMAGE_ROOT>
+          Root directory that image training paths are resolved against
+      --video-root <VIDEO_ROOT>
+          Root directory that video training paths are resolved against
+      --frames <FRAMES>
+          Number of frames sampled per video (overrides the config)
+      --frame-sampling <FRAME_SAMPLING>
+          Frame sampling strategy: uniform or scene-aware
+      --temporal-encoding <TEMPORAL_ENCODING>
+          Temporal encoding kind for video frames
+      --temporal <TEMPORAL>
+          Optional pretrained temporal encoder checkpoint path
+      --document-root <DOCUMENT_ROOT>
+          Root directory that document training paths are resolved against
+      --document-dpi <DOCUMENT_DPI>
+          DPI used when rasterising document pages to images
+      --max-document-pages <MAX_DOCUMENT_PAGES>
+          Maximum number of document pages to rasterise per row
+      --layout-encoding <LAYOUT_ENCODING>
+          Layout encoding kind for document pages
+      --layout <LAYOUT>
+          Optional pretrained layout-aware projector checkpoint path
+      --freeze-projector
+          Freeze the vision projector during fine-tuning
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list [default: attn.wq,attn.wk,attn.wv,attn.wo,ffn.w_gate,ffn.w_up,ffn.w_down]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune document-qdora
+```
+QDoRA fine-tune a vision-language adapter on document VQA data
+
+Usage: aarambh-studio finetune document-qdora [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          VLM training/model TOML configuration (vision encoder + projector + device) [default: configs/vision_vqa_instruct.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL VQA training data path (image, video, document, or audio rows)
+      --output <OUTPUT>
+          Output adapter directory
+      --projector <PROJECTOR>
+          Pretrained vision projector checkpoint path (defaults to the base)
+      --clip-config <CLIP_CONFIG>
+          CLIP vision encoder config JSON path (defaults to the config)
+      --clip-weights <CLIP_WEIGHTS>
+          CLIP vision encoder weights path (defaults to the config)
+      --image-root <IMAGE_ROOT>
+          Root directory that image training paths are resolved against
+      --video-root <VIDEO_ROOT>
+          Root directory that video training paths are resolved against
+      --frames <FRAMES>
+          Number of frames sampled per video (overrides the config)
+      --frame-sampling <FRAME_SAMPLING>
+          Frame sampling strategy: uniform or scene-aware
+      --temporal-encoding <TEMPORAL_ENCODING>
+          Temporal encoding kind for video frames
+      --temporal <TEMPORAL>
+          Optional pretrained temporal encoder checkpoint path
+      --document-root <DOCUMENT_ROOT>
+          Root directory that document training paths are resolved against
+      --document-dpi <DOCUMENT_DPI>
+          DPI used when rasterising document pages to images
+      --max-document-pages <MAX_DOCUMENT_PAGES>
+          Maximum number of document pages to rasterise per row
+      --layout-encoding <LAYOUT_ENCODING>
+          Layout encoding kind for document pages
+      --layout <LAYOUT>
+          Optional pretrained layout-aware projector checkpoint path
+      --freeze-projector
+          Freeze the vision projector during fine-tuning
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list [default: attn.wq,attn.wk,attn.wv,attn.wo,ffn.w_gate,ffn.w_up,ffn.w_down]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune audio-dora
+```
+DoRA fine-tune a vision-language adapter on audio VQA data
+
+Usage: aarambh-studio finetune audio-dora [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          VLM training/model TOML configuration (vision encoder + projector + device) [default: configs/vision_vqa_instruct.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL VQA training data path (image, video, document, or audio rows)
+      --output <OUTPUT>
+          Output adapter directory
+      --projector <PROJECTOR>
+          Pretrained vision projector checkpoint path (defaults to the base)
+      --clip-config <CLIP_CONFIG>
+          CLIP vision encoder config JSON path (defaults to the config)
+      --clip-weights <CLIP_WEIGHTS>
+          CLIP vision encoder weights path (defaults to the config)
+      --image-root <IMAGE_ROOT>
+          Root directory that image training paths are resolved against
+      --video-root <VIDEO_ROOT>
+          Root directory that video training paths are resolved against
+      --frames <FRAMES>
+          Number of frames sampled per video (overrides the config)
+      --frame-sampling <FRAME_SAMPLING>
+          Frame sampling strategy: uniform or scene-aware
+      --temporal-encoding <TEMPORAL_ENCODING>
+          Temporal encoding kind for video frames
+      --temporal <TEMPORAL>
+          Optional pretrained temporal encoder checkpoint path
+      --document-root <DOCUMENT_ROOT>
+          Root directory that document training paths are resolved against
+      --document-dpi <DOCUMENT_DPI>
+          DPI used when rasterising document pages to images
+      --max-document-pages <MAX_DOCUMENT_PAGES>
+          Maximum number of document pages to rasterise per row
+      --layout-encoding <LAYOUT_ENCODING>
+          Layout encoding kind for document pages
+      --layout <LAYOUT>
+          Optional pretrained layout-aware projector checkpoint path
+      --freeze-projector
+          Freeze the vision projector during fine-tuning
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list [default: attn.wq,attn.wk,attn.wv,attn.wo,ffn.w_gate,ffn.w_up,ffn.w_down]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune audio-qdora
+```
+QDoRA fine-tune a vision-language adapter on audio VQA data
+
+Usage: aarambh-studio finetune audio-qdora [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          VLM training/model TOML configuration (vision encoder + projector + device) [default: configs/vision_vqa_instruct.toml]
+      --base <BASE>
+          Base model checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          JSONL VQA training data path (image, video, document, or audio rows)
+      --output <OUTPUT>
+          Output adapter directory
+      --projector <PROJECTOR>
+          Pretrained vision projector checkpoint path (defaults to the base)
+      --clip-config <CLIP_CONFIG>
+          CLIP vision encoder config JSON path (defaults to the config)
+      --clip-weights <CLIP_WEIGHTS>
+          CLIP vision encoder weights path (defaults to the config)
+      --image-root <IMAGE_ROOT>
+          Root directory that image training paths are resolved against
+      --video-root <VIDEO_ROOT>
+          Root directory that video training paths are resolved against
+      --frames <FRAMES>
+          Number of frames sampled per video (overrides the config)
+      --frame-sampling <FRAME_SAMPLING>
+          Frame sampling strategy: uniform or scene-aware
+      --temporal-encoding <TEMPORAL_ENCODING>
+          Temporal encoding kind for video frames
+      --temporal <TEMPORAL>
+          Optional pretrained temporal encoder checkpoint path
+      --document-root <DOCUMENT_ROOT>
+          Root directory that document training paths are resolved against
+      --document-dpi <DOCUMENT_DPI>
+          DPI used when rasterising document pages to images
+      --max-document-pages <MAX_DOCUMENT_PAGES>
+          Maximum number of document pages to rasterise per row
+      --layout-encoding <LAYOUT_ENCODING>
+          Layout encoding kind for document pages
+      --layout <LAYOUT>
+          Optional pretrained layout-aware projector checkpoint path
+      --freeze-projector
+          Freeze the vision projector during fine-tuning
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list [default: attn.wq,attn.wk,attn.wv,attn.wo,ffn.w_gate,ffn.w_up,ffn.w_down]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune grpo
+```
+Group-relative policy optimisation (verifier-rewarded RL fine-tune)
+
+Usage: aarambh-studio finetune grpo [OPTIONS] --base <BASE> --reference <REFERENCE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --base <BASE>
+          Base policy checkpoint path
+      --reference <REFERENCE>
+          Frozen reference checkpoint used for the KL penalty
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          Prompts JSONL path
+      --output <OUTPUT>
+          Output adapter directory
+      --verifier <VERIFIER>
+          Built-in verifier kind: math, format, or math-format [default: math-format]
+      --group-size <GROUP_SIZE>
+          Number of completions sampled per prompt to form a reward group [default: 8]
+      --max-new-tokens <MAX_NEW_TOKENS>
+          Maximum new tokens generated per rollout [default: 128]
+      --temperature <TEMPERATURE>
+          Sampling temperature for rollouts [default: 0.8]
+      --top-p <TOP_P>
+          Nucleus sampling probability mass for rollouts [default: 0.95]
+      --top-k <TOP_K>
+          Top-k sampling width for rollouts [default: 50]
+      --thinking <THINKING>
+          GRPO thinking budget: none, low, medium, high, or max [default: low]
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0.05]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list (e.g. attn.wq,attn.wk,attn.wv,attn.wo) [default: attn.wq,attn.wk,attn.wv,attn.wo]
+      --steps <STEPS>
+          Maximum optimiser steps (alias: --max-steps)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --kl-coeff <KL_COEFF>
+          KL penalty coefficient against the reference policy [default: 0.01]
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune dpo
+```
+Direct preference optimisation against (chosen, rejected) pairs
+
+Usage: aarambh-studio finetune dpo [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --base <BASE>
+          Base policy checkpoint path to fine-tune
+      --reference <REFERENCE>
+          Optional frozen reference checkpoint used for the DPO KL term
+      --reference-free
+          Run reference-free DPO (skip the frozen reference model)
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          Preference-pair JSONL path (chosen, rejected per row)
+      --output <OUTPUT>
+          Output adapter directory
+      --beta <BETA>
+          DPO beta (regularisation strength) [default: 0.1]
+      --max-prompt-tokens <MAX_PROMPT_TOKENS>
+          Maximum tokens kept per prompt half (truncates longer prompts)
+      --max-completion-tokens <MAX_COMPLETION_TOKENS>
+          Maximum tokens kept per chosen/rejected completion
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list (e.g. attn.wq,attn.wk,attn.wv,attn.wo) [default: attn.wq,attn.wk,attn.wv,attn.wo]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune qdpo
+```
+Direct preference optimisation against (chosen, rejected) pairs on a quantised base
+
+Usage: aarambh-studio finetune qdpo [OPTIONS] --base <BASE> --data <DATA> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --base <BASE>
+          Base policy checkpoint path to fine-tune
+      --reference <REFERENCE>
+          Optional frozen reference checkpoint used for the DPO KL term
+      --reference-free
+          Run reference-free DPO (skip the frozen reference model)
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --data <DATA>
+          Preference-pair JSONL path (chosen, rejected per row)
+      --output <OUTPUT>
+          Output adapter directory
+      --beta <BETA>
+          DPO beta (regularisation strength) [default: 0.1]
+      --max-prompt-tokens <MAX_PROMPT_TOKENS>
+          Maximum tokens kept per prompt half (truncates longer prompts)
+      --max-completion-tokens <MAX_COMPLETION_TOKENS>
+          Maximum tokens kept per chosen/rejected completion
+      --lora-rank <LORA_RANK>
+          LoRA / DoRA adapter rank [default: 16]
+      --lora-alpha <LORA_ALPHA>
+          LoRA / DoRA scaling alpha; defaults to 2 * rank
+      --lora-dropout <LORA_DROPOUT>
+          LoRA / DoRA dropout probability [default: 0]
+      --target-modules <TARGET_MODULES>
+          Comma-separated target module list (e.g. attn.wq,attn.wk,attn.wv,attn.wo) [default: attn.wq,attn.wk,attn.wv,attn.wo]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### finetune rlaif
+```
+Phase 46 — RLAIF command-line arguments.
+
+Generates `(chosen, rejected)` preference pairs in the exact DPO schema from AI-judged self-sampled candidates, with position-swap bias correction. The output JSONL feeds directly into the unmodified `finetune dpo` pipeline.
+
+Usage: aarambh-studio finetune rlaif [OPTIONS] --base <BASE> --prompts <PROMPTS> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML config (provides model architecture + device)
+          
+          [default: configs/rlaif_smoke.toml]
+
+      --base <BASE>
+          Policy checkpoint whose completions are judged
+
+      --judge <JUDGE>
+          Frozen judge checkpoint; defaults to the policy (`--base`) for self-judging. Per the roadmap, the judge is "a frozen checkpoint — either the same model at an earlier stage, or the Large scale judging Small/Tiny outputs"
+
+      --tokenizer <TOKENIZER>
+          Tokenizer JSON path (optional; falls back to the config)
+
+      --prompts <PROMPTS>
+          Input prompts JSONL path (`{"prompt": "..."}` per line)
+
+      --output <OUTPUT>
+          Output preference-pair JSONL path (DPO schema)
+
+      --n-candidates <N_CANDIDATES>
+          Number of candidate completions sampled per prompt
+          
+          [default: 4]
+
+      --max-new-tokens <MAX_NEW_TOKENS>
+          Maximum new tokens generated per candidate
+          
+          [default: 64]
+
+      --temperature <TEMPERATURE>
+          Sampling temperature for candidate generation
+          
+          [default: 0.8]
+
+      --top-k <TOP_K>
+          Optional top-k limit for candidate sampling
+
+      --top-p <TOP_P>
+          Optional nucleus probability mass for candidate sampling
+
+      --seed <SEED>
+          Base RNG seed for candidate sampling
+          
+          [default: 42]
+
+      --judge-max-tokens <JUDGE_MAX_TOKENS>
+          Maximum new tokens generated per judge verdict
+          
+          [default: 96]
+
+      --bias-threshold <BIAS_THRESHOLD>
+          Margin below which an agreement is treated as low-confidence
+          
+          [default: 0.1]
+
+      --discard-disagreements
+          Discard disagreement pairs instead of down-weighting them
+
+      --max-pairs <MAX_PAIRS>
+          Optional cap on the number of pairs emitted per prompt
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+#### finetune merge
+```
+Merge a trained adapter back into the base checkpoint
+
+Usage: aarambh-studio finetune merge [OPTIONS] --base <BASE> --adapter <ADAPTER> --output <OUTPUT>
+
+Options:
+      --config <CONFIG>    Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --base <BASE>        Base model checkpoint path
+      --adapter <ADAPTER>  Adapter directory to merge
+      --output <OUTPUT>    Output merged checkpoint path
+      --method <METHOD>    Merge method: auto (infer from metadata), lora, or dora [default: auto]
+  -h, --help               Print help
+```
+
+================================================================================
+### distill subcommands
+================================================================================
+#### distill train
+```
+Train a full student on fresh rollouts scored by a frozen teacher
+
+Usage: aarambh-studio distill train [OPTIONS] --student <STUDENT>
+
+Options:
+      --config <CONFIG>
+          Student distillation TOML configuration (architecture + train settings) [default: configs/distill_smoke.toml]
+      --student <STUDENT>
+          Student checkpoint path to fine-tune
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --prompts <PROMPTS>
+          Prompts JSONL path; defaults to the config dataset path
+      --output <OUTPUT>
+          Output adapter directory; defaults to the config checkpoint dir
+      --teacher <TEACHER>
+          Teacher backend: local (frozen checkpoint) or dataset (logged completions) [default: local]
+      --teacher-model <TEACHER_MODEL>
+          Frozen teacher checkpoint path (required for --teacher local)
+      --teacher-config <TEACHER_CONFIG>
+          Frozen teacher TOML config path (required for --teacher local)
+      --teacher-data <TEACHER_DATA>
+          Teacher completions JSONL path (required for --teacher dataset)
+      --teacher-device <TEACHER_DEVICE>
+          Override the teacher device (e.g. cpu, cuda:0, metal)
+      --teacher-dtype <TEACHER_DTYPE>
+          Override the teacher dtype (e.g. f16, bf16, f32)
+      --objective <OBJECTIVE>
+          Distillation objective: soft-kl (forward KL) or reward (GRPO-style)
+      --rollouts-per-prompt <ROLLOUTS_PER_PROMPT>
+          Number of student rollouts sampled per prompt [default: 4]
+      --max-new-tokens <MAX_NEW_TOKENS>
+          Maximum new tokens generated per student rollout [default: 128]
+      --temperature <TEMPERATURE>
+          Sampling temperature for student rollouts [default: 0.8]
+      --top-p <TOP_P>
+          Nucleus sampling probability mass for student rollouts [default: 0.95]
+      --top-k <TOP_K>
+          Top-k sampling width for student rollouts [default: 50]
+      --teacher-temperature <TEACHER_TEMPERATURE>
+          Sampling temperature applied to the teacher distribution [default: 1]
+      --advantage-clip <ADVANTAGE_CLIP>
+          Maximum absolute advantage used to clip reward-weighted rollouts [default: 5]
+      --thinking <THINKING>
+          Thinking budget: none, low, medium, high, or max [default: none]
+      --batch-size <BATCH_SIZE>
+          Training batch size
+      --max-steps <MAX_STEPS>
+          Maximum optimiser steps (overrides max-epochs when set)
+      --max-epochs <MAX_EPOCHS>
+          Maximum training epochs
+      --lr <LR>
+          Learning rate
+      --grad-accum-steps <GRAD_ACCUM_STEPS>
+          Gradient accumulation steps before an optimiser update
+      --warmup-steps <WARMUP_STEPS>
+          Linear warmup steps before the cosine schedule
+      --save-every-n-steps <SAVE_EVERY_N_STEPS>
+          Save an adapter every N optimiser steps
+      --log-every-n-steps <LOG_EVERY_N_STEPS>
+          Log training metrics every N optimiser steps
+      --resume
+          Resume training from the latest adapter in the output directory
+      --no-shuffle
+          Disable dataset shuffling between epochs
+  -h, --help
+          Print help
+```
+
+#### distill evaluate
+```
+Score fresh student rollouts and write alignment reports
+
+Usage: aarambh-studio distill evaluate [OPTIONS] --student <STUDENT>
+
+Options:
+      --config <CONFIG>
+          Student distillation TOML configuration (architecture + train settings) [default: configs/distill_smoke.toml]
+      --student <STUDENT>
+          Student checkpoint path to evaluate
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --prompts <PROMPTS>
+          Prompts JSONL path; defaults to the config dataset path
+      --teacher <TEACHER>
+          Teacher backend: local (frozen checkpoint) or dataset (logged completions) [default: local]
+      --teacher-model <TEACHER_MODEL>
+          Frozen teacher checkpoint path (required for --teacher local)
+      --teacher-config <TEACHER_CONFIG>
+          Frozen teacher TOML config path (required for --teacher local)
+      --teacher-data <TEACHER_DATA>
+          Teacher completions JSONL path (required for --teacher dataset)
+      --teacher-device <TEACHER_DEVICE>
+          Override the teacher device (e.g. cpu, cuda:0, metal)
+      --teacher-dtype <TEACHER_DTYPE>
+          Override the teacher dtype (e.g. f16, bf16, f32)
+      --objective <OBJECTIVE>
+          Distillation objective: soft-kl (forward KL) or reward (GRPO-style)
+      --rollouts-per-prompt <ROLLOUTS_PER_PROMPT>
+          Number of student rollouts sampled per prompt [default: 2]
+      --max-new-tokens <MAX_NEW_TOKENS>
+          Maximum new tokens generated per student rollout [default: 128]
+      --temperature <TEMPERATURE>
+          Sampling temperature for student rollouts [default: 0.8]
+      --top-p <TOP_P>
+          Nucleus sampling probability mass for student rollouts [default: 0.95]
+      --top-k <TOP_K>
+          Top-k sampling width for student rollouts [default: 50]
+      --teacher-temperature <TEACHER_TEMPERATURE>
+          Sampling temperature applied to the teacher distribution [default: 1]
+      --max-prompts <MAX_PROMPTS>
+          Optional cap on the number of prompts evaluated
+      --out <OUT>
+          Optional JSON output path for the alignment report
+      --markdown <MARKDOWN>
+          Optional Markdown output path for the alignment report
+      --seed <SEED>
+          RNG seed for deterministic rollout sampling [default: 42]
+  -h, --help
+          Print help
+```
+
+================================================================================
+### selflearn subcommands
+================================================================================
+#### selflearn start
+```
+Run a single self-learning inference (text or vision) step
+
+Usage: aarambh-studio selflearn start [OPTIONS] --prompt <PROMPT>
+
+Options:
+      --mode <MODE>
+          Self-learning runtime mode: text or vision [default: text]
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --model <MODEL>
+          Model checkpoint path; falls back to best.json/latest.json pointer
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --image <IMAGE>
+          Image file path for vision self-learning (required when --mode vision)
+      --prompt <PROMPT>
+          Prompt text fed to the self-learning loop
+      --max-tokens <MAX_TOKENS>
+          Maximum number of new tokens generated [default: 256]
+      --temperature <TEMPERATURE>
+          Sampling temperature for stochastic decoding [default: 0.7]
+      --top-p <TOP_P>
+          Nucleus sampling probability mass [default: 0.9]
+      --top-k <TOP_K>
+          Top-k sampling width [default: 50]
+      --seed <SEED>
+          Deterministic sampler seed
+      --stream
+          Stream tokens to stdout as they are generated
+      --greedy
+          Use greedy (argmax) decoding instead of stochastic sampling
+      --thinking <THINKING>
+          Thinking budget: none, low, medium, high, or max (Phase 39) [default: none]
+      --safety <SAFETY>
+          Safety policy: strict, permissive, research, or none [default: strict]
+      --safety-audit-log <SAFETY_AUDIT_LOG>
+          JSONL safety audit log path [default: safety_audit.jsonl]
+      --replay-path <REPLAY_PATH>
+          Self-learning replay JSONL path (defaults to data/replay.jsonl)
+      --self-learn-state-dir <SELF_LEARN_STATE_DIR>
+          Self-learning state directory for adapters and metrics [default: adapters/selflearn]
+      --self-learn-reference <SELF_LEARN_REFERENCE>
+          Reference (frozen) checkpoint used for KL during self-learning
+      --self-learn-verifier <SELF_LEARN_VERIFIER>
+          Built-in verifier kind: none, math, format, or math-format [default: none]
+      --self-learn-vision-verifier <SELF_LEARN_VISION_VERIFIER>
+          Grounded vision verifier: none, auto, count, color, presence, or exact [default: auto]
+      --self-learn-ground-truth <SELF_LEARN_GROUND_TRUTH>
+          Ground-truth answer required when a verifier other than none is used
+      --forgetting-manifest <FORGETTING_MANIFEST>
+          Capability probe manifest path (enables forgetting analysis)
+      --forgetting-store <FORGETTING_STORE>
+          Forgetting curves store path (defaults to <state-dir>/forgetting_curves.json)
+      --forgetting-jsonl <FORGETTING_JSONL>
+          Optional JSONL export path for forgetting deltas
+      --forgetting-threshold <FORGETTING_THRESHOLD>
+          Absolute capability-score delta treated as significant forgetting [default: 0.02]
+      --forgetting-max-examples <FORGETTING_MAX_EXAMPLES>
+          Maximum examples evaluated per capability probe [default: 8]
+      --forgetting-allow-code-exec
+          Allow code execution in capability probes
+      --require-all-probes
+          Require every manifest probe to run; otherwise missing probes are skipped
+      --forgetting-baseline-id <FORGETTING_BASELINE_ID>
+          Baseline checkpoint or session id used to compute forgetting deltas
+  -h, --help
+          Print help
+```
+
+#### selflearn flush-gradients
+```
+Flush pending self-learning gradients through the loop optimiser
+
+Usage: aarambh-studio selflearn flush-gradients [OPTIONS] --base <BASE>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --base <BASE>
+          Base (policy) checkpoint path
+      --reference <REFERENCE>
+          Reference (frozen) checkpoint path; defaults to the base
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --mode <MODE>
+          Self-learning runtime mode: cpu or gpu [default: cpu]
+      --replay-path <REPLAY_PATH>
+          Self-learning replay JSONL path [default: data/replay.jsonl]
+      --self-learn-state-dir <SELF_LEARN_STATE_DIR>
+          Self-learning state directory for adapters and metrics [default: adapters/selflearn]
+      --forgetting-manifest <FORGETTING_MANIFEST>
+          Capability probe manifest path (enables forgetting analysis)
+      --forgetting-store <FORGETTING_STORE>
+          Forgetting curves store path (defaults to <state-dir>/forgetting_curves.json)
+      --forgetting-jsonl <FORGETTING_JSONL>
+          Optional JSONL export path for forgetting deltas
+      --forgetting-threshold <FORGETTING_THRESHOLD>
+          Absolute capability-score delta treated as significant forgetting [default: 0.02]
+      --forgetting-max-examples <FORGETTING_MAX_EXAMPLES>
+          Maximum examples evaluated per capability probe [default: 8]
+      --forgetting-allow-code-exec
+          Allow code execution in capability probes
+      --require-all-probes
+          Require every manifest probe to run; otherwise missing probes are skipped
+      --forgetting-baseline-id <FORGETTING_BASELINE_ID>
+          Baseline checkpoint or session id used to compute forgetting deltas
+  -h, --help
+          Print help
+```
+
+#### selflearn replay
+```
+Run a self-learning replay fine-tune over the replay buffer
+
+Usage: aarambh-studio selflearn replay [OPTIONS] --base <BASE>
+
+Options:
+      --config <CONFIG>
+          Training/model TOML configuration (provides architecture + device) [default: configs/tiny_shakespeare.toml]
+      --base <BASE>
+          Base (policy) checkpoint path
+      --reference <REFERENCE>
+          Reference (frozen) checkpoint path; defaults to the base
+      --tokenizer <TOKENIZER>
+          Optional tokenizer JSON path; falls back to the config
+      --mode <MODE>
+          Self-learning runtime mode: cpu or gpu [default: cpu]
+      --replay-path <REPLAY_PATH>
+          Self-learning replay JSONL path [default: data/replay.jsonl]
+      --self-learn-state-dir <SELF_LEARN_STATE_DIR>
+          Self-learning state directory for adapters and metrics [default: adapters/selflearn]
+      --forgetting-manifest <FORGETTING_MANIFEST>
+          Capability probe manifest path (enables forgetting analysis)
+      --forgetting-store <FORGETTING_STORE>
+          Forgetting curves store path (defaults to <state-dir>/forgetting_curves.json)
+      --forgetting-jsonl <FORGETTING_JSONL>
+          Optional JSONL export path for forgetting deltas
+      --forgetting-threshold <FORGETTING_THRESHOLD>
+          Absolute capability-score delta treated as significant forgetting [default: 0.02]
+      --forgetting-max-examples <FORGETTING_MAX_EXAMPLES>
+          Maximum examples evaluated per capability probe [default: 8]
+      --forgetting-allow-code-exec
+          Allow code execution in capability probes
+      --require-all-probes
+          Require every manifest probe to run; otherwise missing probes are skipped
+      --forgetting-baseline-id <FORGETTING_BASELINE_ID>
+          Baseline checkpoint or session id used to compute forgetting deltas
+  -h, --help
+          Print help
+```
+
+#### selflearn stats
+```
+Print replay buffer, metrics, and forgetting-curve statistics
+
+Usage: aarambh-studio selflearn stats [OPTIONS]
+
+Options:
+      --mode <MODE>
+          Self-learning runtime mode: text or vision [default: text]
+      --replay-path <REPLAY_PATH>
+          Override the replay JSONL path (defaults by mode)
+      --self-learn-state-dir <SELF_LEARN_STATE_DIR>
+          Self-learning state directory for adapters and metrics [default: adapters/selflearn]
+  -h, --help
+          Print help
+```
+
+#### selflearn reset
+```
+Delete the replay buffer and self-learning state directory
+
+Usage: aarambh-studio selflearn reset [OPTIONS]
+
+Options:
+      --replay-path <REPLAY_PATH>
+          Replay JSONL path to delete [default: data/replay.jsonl]
+      --self-learn-state-dir <SELF_LEARN_STATE_DIR>
+          Self-learning state directory to delete recursively [default: adapters/selflearn]
+      --yes
+          Confirm the destructive reset (required to proceed)
+  -h, --help
+          Print help
+```
+

@@ -12,6 +12,7 @@ use clap::{Args, Subcommand};
 use crate::cmd::infer::{self, InferArgs};
 
 #[derive(Debug, Args)]
+/// Self-learning loop operator: start, flush, replay, stats, or reset.
 pub struct SelflearnArgs {
     #[command(subcommand)]
     pub command: SelflearnCommand,
@@ -19,79 +20,116 @@ pub struct SelflearnArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum SelflearnCommand {
+    /// Run a single self-learning inference (text or vision) step.
     Start(Box<StartArgs>),
+    /// Flush pending self-learning gradients through the loop optimiser.
     FlushGradients(SelflearnRunArgs),
+    /// Run a self-learning replay fine-tune over the replay buffer.
     Replay(SelflearnRunArgs),
+    /// Print replay buffer, metrics, and forgetting-curve statistics.
     Stats(StatsArgs),
+    /// Print the stored forgetting-curve report and exit.
     ForgettingReport(ForgettingReportArgs),
+    /// Delete the replay buffer and self-learning state directory.
     Reset(ResetArgs),
 }
 
 #[derive(Debug, Args, Clone)]
+/// Shared forgetting-probe arguments for `selflearn` subcommands.
 pub struct ForgettingArgs {
+    /// Capability probe manifest path (enables forgetting analysis).
     #[arg(long)]
     pub forgetting_manifest: Option<PathBuf>,
+    /// Forgetting curves store path (defaults to `<state-dir>/forgetting_curves.json`).
     #[arg(long)]
     pub forgetting_store: Option<PathBuf>,
+    /// Optional JSONL export path for forgetting deltas.
     #[arg(long)]
     pub forgetting_jsonl: Option<PathBuf>,
+    /// Absolute capability-score delta treated as significant forgetting.
     #[arg(long, default_value_t = 0.02)]
     pub forgetting_threshold: f64,
+    /// Maximum examples evaluated per capability probe.
     #[arg(long, default_value_t = 8)]
     pub forgetting_max_examples: usize,
+    /// Allow code execution in capability probes.
     #[arg(long)]
     pub forgetting_allow_code_exec: bool,
+    /// Require every manifest probe to run; otherwise missing probes are skipped.
     #[arg(long)]
     pub require_all_probes: bool,
+    /// Baseline checkpoint or session id used to compute forgetting deltas.
     #[arg(long)]
     pub forgetting_baseline_id: Option<String>,
 }
 
 #[derive(Debug, Args)]
+/// `selflearn start` — run a single self-learning inference step.
 pub struct StartArgs {
+    /// Self-learning runtime mode: text or vision.
     #[arg(long, default_value = "text")]
     pub mode: String,
+    /// Training/model TOML configuration (provides architecture + device).
     #[arg(long, default_value = "configs/tiny_shakespeare.toml")]
     pub config: PathBuf,
+    /// Model checkpoint path; falls back to best.json/latest.json pointer.
     #[arg(long)]
     pub model: Option<PathBuf>,
+    /// Optional tokenizer JSON path; falls back to the config.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// Image file path for vision self-learning (required when --mode vision).
     #[arg(long)]
     pub image: Option<PathBuf>,
+    /// Prompt text fed to the self-learning loop.
     #[arg(long)]
     pub prompt: String,
+    /// Maximum number of new tokens generated.
     #[arg(long, default_value_t = 256)]
     pub max_tokens: usize,
+    /// Sampling temperature for stochastic decoding.
     #[arg(long, default_value_t = 0.7)]
     pub temperature: f32,
+    /// Nucleus sampling probability mass.
     #[arg(long, default_value_t = 0.9)]
     pub top_p: f32,
+    /// Top-k sampling width.
     #[arg(long, default_value_t = 50)]
     pub top_k: usize,
+    /// Deterministic sampler seed.
     #[arg(long)]
     pub seed: Option<u64>,
+    /// Stream tokens to stdout as they are generated.
     #[arg(long)]
     pub stream: bool,
+    /// Use greedy (argmax) decoding instead of stochastic sampling.
     #[arg(long)]
     pub greedy: bool,
     /// Thinking budget: none, low, medium, high, or max (Phase 39).
     #[arg(long, default_value = "none")]
     pub thinking: String,
+    /// Safety policy: strict, permissive, research, or none.
     #[arg(long, default_value = "strict")]
     pub safety: String,
+    /// JSONL safety audit log path.
     #[arg(long, default_value = "safety_audit.jsonl")]
     pub safety_audit_log: PathBuf,
+    /// Self-learning replay JSONL path (defaults to data/replay.jsonl).
     #[arg(long)]
     pub replay_path: Option<PathBuf>,
+    /// Self-learning state directory for adapters and metrics.
     #[arg(long, default_value = "adapters/selflearn")]
     pub self_learn_state_dir: PathBuf,
+    /// Reference (frozen) checkpoint used for KL during self-learning.
     #[arg(long)]
     pub self_learn_reference: Option<PathBuf>,
+    /// Built-in verifier kind: none, math, format, or math-format.
     #[arg(long, default_value = "none")]
     pub self_learn_verifier: String,
+    /// Grounded vision verifier: none, auto, count, color, presence, or exact.
     #[arg(long, default_value = "auto")]
     pub self_learn_vision_verifier: String,
+    /// Ground-truth answer required when a verifier other than none is used.
     #[arg(long)]
     pub self_learn_ground_truth: Option<String>,
     #[command(flatten)]
@@ -99,19 +137,27 @@ pub struct StartArgs {
 }
 
 #[derive(Debug, Args)]
+/// `selflearn flush-gradients` / `selflearn replay` shared arguments.
 pub struct SelflearnRunArgs {
+    /// Training/model TOML configuration (provides architecture + device).
     #[arg(long, default_value = "configs/tiny_shakespeare.toml")]
     pub config: PathBuf,
+    /// Base (policy) checkpoint path.
     #[arg(long)]
     pub base: PathBuf,
+    /// Reference (frozen) checkpoint path; defaults to the base.
     #[arg(long)]
     pub reference: Option<PathBuf>,
+    /// Optional tokenizer JSON path; falls back to the config.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// Self-learning runtime mode: cpu or gpu.
     #[arg(long, default_value = "cpu")]
     pub mode: String,
+    /// Self-learning replay JSONL path.
     #[arg(long, default_value = "data/replay.jsonl")]
     pub replay_path: PathBuf,
+    /// Self-learning state directory for adapters and metrics.
     #[arg(long, default_value = "adapters/selflearn")]
     pub self_learn_state_dir: PathBuf,
     #[command(flatten)]
@@ -119,27 +165,37 @@ pub struct SelflearnRunArgs {
 }
 
 #[derive(Debug, Args)]
+/// `selflearn stats` — print replay, metrics, and forgetting statistics.
 pub struct StatsArgs {
+    /// Self-learning runtime mode: text or vision.
     #[arg(long, default_value = "text")]
     pub mode: String,
+    /// Override the replay JSONL path (defaults by mode).
     #[arg(long)]
     pub replay_path: Option<PathBuf>,
+    /// Self-learning state directory for adapters and metrics.
     #[arg(long, default_value = "adapters/selflearn")]
     pub self_learn_state_dir: PathBuf,
 }
 
 #[derive(Debug, Args)]
+/// `selflearn reset` — delete the replay buffer and self-learning state.
 pub struct ResetArgs {
+    /// Replay JSONL path to delete.
     #[arg(long, default_value = "data/replay.jsonl")]
     pub replay_path: PathBuf,
+    /// Self-learning state directory to delete recursively.
     #[arg(long, default_value = "adapters/selflearn")]
     pub self_learn_state_dir: PathBuf,
+    /// Confirm the destructive reset (required to proceed).
     #[arg(long)]
     pub yes: bool,
 }
 
 #[derive(Debug, Args)]
+/// `selflearn forgetting-report` — print the stored forgetting-curve report.
 pub struct ForgettingReportArgs {
+    /// Forgetting curves store JSON path to print.
     #[arg(long, default_value = "adapters/selflearn/forgetting_curves.json")]
     pub forgetting_store: PathBuf,
 }

@@ -14,7 +14,9 @@ use aarambh_studio_train::{
 use clap::Args;
 
 #[derive(Debug, Args)]
+/// Train a model checkpoint from a TOML training configuration.
 pub struct TrainArgs {
+    /// Training/model TOML configuration path.
     #[arg(long)]
     pub config: PathBuf,
 }

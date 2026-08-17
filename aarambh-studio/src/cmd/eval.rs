@@ -17,50 +17,72 @@ use serde::Deserialize;
 use std::str::FromStr;
 
 #[derive(Debug, Args)]
+/// Evaluate a checkpoint on capability, forgetting, or KV-cache probes.
 pub struct EvalArgs {
+    /// Optional training/model TOML config (required unless --compare is used).
     #[arg(long)]
     pub config: Option<PathBuf>,
+    /// Model checkpoint path; falls back to best.json/latest.json pointer.
     #[arg(long)]
     pub model: Option<PathBuf>,
+    /// Optional tokenizer JSON path; falls back to the configured tokenizer.
     #[arg(long)]
     pub tokenizer: Option<PathBuf>,
+    /// Comma-separated task list (e.g. ppl,gsm8k,humaneval).
     #[arg(long, default_value = "ppl")]
     pub tasks: String,
+    /// Directory containing per-task evaluation datasets.
     #[arg(long, default_value = "data/eval")]
     pub data_dir: PathBuf,
+    /// Optional cap on the number of examples evaluated per task.
     #[arg(long)]
     pub max_examples: Option<usize>,
+    /// Maximum new tokens generated per generative task.
     #[arg(long, default_value_t = 128)]
     pub max_new_tokens: usize,
     /// Thinking budget: none, low, medium, high, or max (Phase 39).
     #[arg(long, default_value = "none")]
     pub thinking: String,
+    /// Maximum tool-call steps for agent-style tasks.
     #[arg(long, default_value_t = 8)]
     pub agent_max_steps: usize,
+    /// Allow code execution in agent-style tasks (enables the code tool).
     #[arg(long)]
     pub allow_code_exec: bool,
+    /// Optional JSON output path for the scorecard.
     #[arg(long)]
     pub out: Option<PathBuf>,
+    /// Optional Markdown output path for the scorecard.
     #[arg(long)]
     pub markdown: Option<PathBuf>,
+    /// Compare two scorecards (takes exactly two JSON scorecard paths).
     #[arg(long, num_args = 2)]
     pub compare: Vec<PathBuf>,
+    /// Compare a QAT checkpoint against its unquantised baseline.
     #[arg(long)]
     pub qat_compare: bool,
+    /// Unquantised baseline checkpoint used as the --qat-compare reference.
     #[arg(long, requires = "qat_compare")]
     pub baseline_model: Option<PathBuf>,
+    /// Capability probe manifest path (enables forgetting analysis).
     #[arg(long)]
     pub forgetting_manifest: Option<PathBuf>,
+    /// Forgetting curves store path (read and updated).
     #[arg(long, default_value = "checkpoints/forgetting/curves.json")]
     pub forgetting_store: PathBuf,
+    /// Current checkpoint or session id recorded under the manifest.
     #[arg(long, requires = "forgetting_manifest")]
     pub checkpoint_id: Option<String>,
+    /// Baseline checkpoint or session id used to compute forgetting deltas.
     #[arg(long, requires = "forgetting_manifest")]
     pub baseline_id: Option<String>,
+    /// Absolute capability-score delta treated as significant forgetting.
     #[arg(long, default_value_t = DEFAULT_SIGNIFICANCE_THRESHOLD)]
     pub significance_threshold: f64,
+    /// Optional JSONL export path for forgetting deltas.
     #[arg(long, requires_all = ["forgetting_manifest", "baseline_id"])]
     pub forgetting_jsonl: Option<PathBuf>,
+    /// Require every manifest probe to run; otherwise missing probes are skipped.
     #[arg(long, requires = "forgetting_manifest")]
     pub require_all_probes: bool,
     /// Print per-layer KV-cache bytes/token by attention kind and exit (v4 Phase 41).
