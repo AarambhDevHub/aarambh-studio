@@ -4,6 +4,7 @@ pub mod distill;
 pub mod eval;
 pub mod finetune;
 pub mod infer;
+pub mod merge;
 pub mod quantise;
 pub mod retrieve;
 pub mod selflearn;

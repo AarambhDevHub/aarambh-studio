@@ -1015,37 +1015,77 @@ git tag v4.0.0-alpha.9
 
 **Duration:** 5–7 days | **Hardware:** i3
 
+> **Status: shipped in v4.0.0-alpha.10** — a new `merge.rs` module in the
+> existing `aarambh-studio-weights` crate (no new crate, no new external
+> dependency) ships the five standard model-merging algorithms: linear/Model-
+> Soups, SLERP, task-vector arithmetic, TIES-Merging, and DARE. A new
+> top-level `aarambh-studio merge` CLI (distinct from the existing
+> `finetune merge` adapter-folding command) drives every algorithm. Hard
+> validation (identical tensor-name sets, per-tensor shape/dtype) runs before
+> any arithmetic, so mismatched inputs are rejected without writing a single
+> output byte. MoE/MLA/MTP checkpoints merge transparently because merging
+> operates on raw `HashMap<String, Tensor>` maps. Four roadmap-named
+> acceptance tests plus nine supporting tests run in milliseconds. A
+> `MergeReport` carries only structural facts; any quality claim is measured
+> separately by the `eval` command — the same "measured, not assumed"
+> discipline every capability claim has held since v2 §26. See
+> `docs/phase50_model_merging.md` for the runbook and `ARCHITECTURE_V4.md`
+> §64 for the design.
+
 ### Goal
 By this point in the roadmap, DoRA (v2 §23), DPO (v2 §28), RLAIF
 (v4 §46), fine-grained MoE (v3 §40), and distillation (v3 §42) have
 all produced genuinely different checkpoint variants. This phase adds
 the tooling to merge compatible variants into one via SLERP
-interpolation and task-arithmetic composition.
+interpolation, task-vector arithmetic, and the broader standard
+merging toolkit (linear/Model-Soups, TIES-Merging, DARE).
 
 ### Tasks
 
 **`aarambh-studio-weights`:**
 ```
-[ ] src/merge.rs
+[x] src/merge.rs
       Hard shape/schema validation first — merging requires identical
       architecture and tensor shapes; incompatible checkpoints fail
       loudly at the validation step, never silently produce garbage
       weights
-      Linear/SLERP interpolation between two or more compatible
-      checkpoints, with a configurable weight per input
+      Linear/Model-Soups weighted averaging of two or more compatible
+      checkpoints, with a configurable weight per input (normalized to
+      sum to one)
+      SLERP (spherical linear interpolation) between two or more
+      checkpoints, with a documented linear fallback for near-parallel
+      tensors to avoid division by sin(θ) ≈ 0
       Task-vector arithmetic: delta = tuned_checkpoint - base_checkpoint,
       merged = base_checkpoint + sum(scaled deltas) — lets you combine
       independently-tuned deltas (e.g. a math-DoRA delta and a
       chat-DPO delta) onto one shared base
+      TIES-Merging: trim each delta to its top-density magnitude entries,
+      elect a sign per position by weighted majority, disjoint-merge
+      only the agreeing deltas onto the base
+      DARE: drop-and-rescale each task vector with a deterministic
+      seeded mask (no rand dependency), then linearly combine the
+      surviving (rescaled) deltas onto the base
+      MoE/MLA/MTP transparency: merging operates on raw
+      HashMap<String, Tensor> maps, so expert/router/MLA/MTP tensors
+      merge identically to any other tensor — no special-casing, no
+      reject_* guard
 ```
 
 **`aarambh-studio` CLI:**
 ```
-[ ] aarambh-studio merge --method slerp --inputs a.safetensors,b.safetensors \
+[x] aarambh-studio merge linear --inputs a.safetensors,b.safetensors \
       --weights 0.5,0.5 --output merged.safetensors
-[ ] aarambh-studio merge --method task-arithmetic --base base.safetensors \
+[x] aarambh-studio merge slerp --inputs a.safetensors,b.safetensors \
+      --weights 0.5,0.5 --output merged.safetensors
+[x] aarambh-studio merge task-arithmetic --base base.safetensors \
       --deltas math.safetensors,chat.safetensors --scales 1.0,0.5 \
       --output merged.safetensors
+[x] aarambh-studio merge ties --base base.safetensors \
+      --deltas math.safetensors,chat.safetensors --scales 1.0,1.0 \
+      --density 0.5 --output merged.safetensors
+[x] aarambh-studio merge dare --base base.safetensors \
+      --deltas math.safetensors,chat.safetensors --scales 1.0,0.5 \
+      --density 0.5 --seed 42 --output merged.safetensors
 ```
 
 ### Tests
@@ -1064,15 +1104,35 @@ fn merged_checkpoint_eval_harness_score_is_reported_not_assumed_improved() {
     // Same honesty discipline as MoE (v2 §26): merging is measured,
     // not assumed to help, every time.
 }
+
+// Supporting tests (nine):
+#[test]
+fn linear_merge_of_two_identical_checkpoints_is_idempotent() {}
+#[test]
+fn linear_merge_weights_are_normalized_to_sum_one() {}
+#[test]
+fn slerp_parallel_vectors_fall_back_to_linear_interpolation() {}
+#[test]
+fn task_arithmetic_with_zero_scales_reproduces_the_base_checkpoint() {}
+#[test]
+fn ties_merge_resolves_sign_conflicts_by_weighted_majority() {}
+#[test]
+fn dare_drop_and_rescale_preserves_expected_magnitude() {}
+#[test]
+fn merge_rejects_mismatched_tensor_name_sets() {}
+#[test]
+fn merge_rejects_inconsistent_weight_counts() {}
+#[test]
+fn merge_output_is_loadable_by_safetensors_load_round_trip() {}
 ```
 
 ### Milestone
 ```
 `aarambh-studio merge` produces a valid, loadable SafeTensors checkpoint
-from both SLERP and task-arithmetic paths, with shape-mismatch inputs
-correctly rejected before any output is written, and the merged
-checkpoint's eval-harness scorecard reported honestly against both
-input checkpoints' individual scores.
+from all five algorithm paths (linear, slerp, task-arithmetic, ties,
+dare), with shape-mismatch inputs correctly rejected before any output
+is written, and the merged checkpoint's eval-harness scorecard reported
+honestly against both input checkpoints' individual scores.
 
 git commit -m "feat: Phase 50 — model merging"
 git tag v4.0.0-alpha.10
@@ -1456,7 +1516,7 @@ git push origin v4.0.0
 | 47 | Sandboxed Tool Execution | Model-triggered execution, closed-world allowlist | i3 + Kaggle | 10–14 days |
 | 48 | Multi-Agent Orchestration | Orchestrator delegating to sandboxed sub-chains | i3 + Kaggle | 10–14 days |
 | 49 | RAG | From-scratch pure-Rust retrieval pipeline | i3 | 10–14 days |
-| 50 | Model Merging | SLERP + task-arithmetic checkpoint merging | i3 | 5–7 days |
+| 50 | Model Merging | Linear/SLERP/TIES/DARE/task-arithmetic checkpoint merging (5 algorithms) | i3 | 5–7 days |
 | 51 | Public Inference Server | Multi-tenant auth, rate limits, prefix caching | Kaggle | 10–14 days |
 | 52 | System Role & Chat-Template Versioning | `<|system|>` formalized, template version tag, context-truncation policy | i3 | 7–10 days |
 | 53 | Red-Team Evaluation | Systematic adversarial testing of safety, execution, and server surfaces | i3 + Kaggle | 10–14 days |

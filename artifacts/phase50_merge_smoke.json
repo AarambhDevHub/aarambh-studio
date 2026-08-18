@@ -1,0 +1,29 @@
+{
+  "phase": 50,
+  "title": "Model Merging / Weight Averaging",
+  "weights_crate_merge_tests": "passed",
+  "cli_flags_surface": [
+    "merge linear --inputs/--weights/--output",
+    "merge slerp --inputs/--weights/--output",
+    "merge task-arithmetic --base/--deltas/--scales/--output",
+    "merge ties --base/--deltas/--scales/--density/--normalize/--output",
+    "merge dare --base/--deltas/--scales/--density/--seed/--output"
+  ],
+  "algorithms": [
+    "linear",
+    "slerp",
+    "task-arithmetic",
+    "ties",
+    "dare"
+  ],
+  "end_to_end_merge_per_algorithm": true,
+  "shape_mismatch_rejected_before_write": true,
+  "hard_validation_before_any_write": true,
+  "moe_supported_transparently": true,
+  "cpu_first": true,
+  "no_new_crate": true,
+  "no_new_external_dependency": true,
+  "new_module": "crates/aarambh-studio-weights/src/merge.rs",
+  "new_cli": "aarambh-studio merge",
+  "honesty_note": "Model merging extends the existing aarambh-studio-weights crate with a new merge.rs module (no new crate, no new external dependency). Five standard algorithms ship: linear/Model-Soups, SLERP, task-arithmetic, TIES-Merging, and DARE \u2014 operating on raw HashMap<String, Tensor> maps so MoE/MLA/MTP checkpoints merge transparently. All math runs in f32 on CPU. Hard validation (identical tensor-name sets, per-tensor shape/dtype) runs BEFORE any arithmetic, so mismatched inputs are rejected without writing a single output byte. A MergeReport carries only structural facts (tensor counts, SLERP fallback counts, TIES conflict counts, DARE dropped fraction); any quality claim is measured separately by the eval command against the merged artifact \u2014 the same 'measured, not assumed' discipline every capability claim has held since v2 \u00a726."
+}

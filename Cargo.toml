@@ -25,7 +25,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "4.0.0-alpha.9"
+version = "4.0.0-alpha.10"
 edition = "2024"
 rust-version = "1.89"
 description = "From first principles. From zero. From Rust."

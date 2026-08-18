@@ -7,6 +7,8 @@ use std::path::Path;
 pub mod convert;
 /// GGUF checkpoint reader and writer.
 pub mod gguf;
+/// Model merging and weight averaging (Phase 50).
+pub mod merge;
 /// Vocabulary-row migration helpers.
 pub mod vocab;
 
@@ -18,6 +20,10 @@ use candle_nn::{VarBuilder, VarMap};
 
 pub use convert::{HfArch, convert_hf, convert_hf_tensors, convert_hf_with_arch};
 pub use gguf::{load_gguf, load_gguf_tensors, load_gguf_with_dtype, save_gguf};
+pub use merge::{
+    DEFAULT_DENSITY, MergeConfig, MergeMethod, MergeReport, SLERP_PARALLEL_EPSILON,
+    merge_models_from_paths,
+};
 pub use vocab::{VocabularyExpansion, VocabularyExpansionReport, expand_safetensors_vocabulary};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

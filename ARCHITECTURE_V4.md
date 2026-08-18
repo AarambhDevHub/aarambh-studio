@@ -966,7 +966,7 @@ discipline every capability claim in this project has held since v2
 
 ## 64. Model Merging / Weight Averaging
 
-**Crate:** `aarambh-studio-weights` (`merge.rs`) | **Depends on:** v2 §23 (DoRA), v2 §28 (DPO), v4 §60 (RLAIF), v3 §40 (fine-grained MoE), v3 §42 (distillation) — needs their checkpoint variants to exist
+**Crate:** `aarambh-studio-weights` (`merge.rs`) | **Depends on:** v2 §23 (DoRA), v2 §28 (DPO), v4 §60 (RLAIF), v3 §40 (fine-grained MoE), v3 §42 (distillation) — needs their checkpoint variants to exist | **Status:** shipped in v4.0.0-alpha.10 (Phase 50)
 
 ### Why Now, Not Earlier
 
@@ -977,7 +977,17 @@ DPO-tuned, RLAIF-tuned, MoE, and distilled variants all exist
 side-by-side, making this the first point where merging has real
 utility.
 
-### Two Methods
+### Five Methods
+
+**Linear / Model Soups** — weighted averaging of N compatible
+checkpoints:
+
+```
+merged = Σᵢ (wᵢ / Σ wⱼ) · checkpointᵢ
+```
+
+Weights are normalized to sum to one internally, so `[2, 2]` and
+`[0.5, 0.5]` produce identical output.
 
 **SLERP (spherical linear interpolation)** between two or more
 compatible checkpoints:
@@ -988,6 +998,10 @@ merged = slerp(checkpoint_a, checkpoint_b, weight)
 
 At `weight = 1.0` or `0.0`, this reproduces one input checkpoint
 exactly — the backward-compatibility floor for the merge tool itself.
+Near-parallel flattened tensors (`cos θ > 1 − 1e-6`) fall back to
+linear interpolation to avoid division by `sin(θ) ≈ 0`; the fallback
+count is reported in the `MergeReport`. For N>2 inputs, SLERP folds
+left-to-right with `tᵢ = wᵢ / Σⱼ≤ᵢ wⱼ`.
 
 **Task-vector arithmetic**, for combining independently-tuned deltas
 onto one shared base:
@@ -1001,15 +1015,47 @@ This lets you, for example, combine a math-focused DoRA delta and a
 chat-focused DPO delta onto the same base checkpoint, each scaled
 independently.
 
+**TIES-Merging** (Trim, Elect sign, Disjoint merge) resolves the
+parameter-conflict problem that naive delta-summing creates when two
+deltas disagree on the sign of a parameter:
+
+```
+1. trim:   keep only the top-density magnitude entries per delta
+2. elect:  per position, sign = sign of Σ |δᵢ|·sign(δᵢ) (weighted majority)
+3. merge:  average only the deltas whose sign agrees with the elected sign
+4. out:    base + merged_delta  (optionally rescaled by 1/density)
+```
+
+**DARE** (Drop And Rescale) sparsifies each task vector before
+combination, reducing interference between deltas:
+
+```
+1. drop:     each parameter kept with probability `density` (deterministic
+             seeded mask — no `rand` dependency, fully reproducible)
+2. rescale:  surviving parameters multiplied by 1/density
+3. out:      base + Σ scaleᵢ · dared_deltaᵢ
+```
+
 ### Hard Validation Before Any Write
 
-Both methods validate tensor shapes and architecture compatibility
-**before** producing any output — merging checkpoints from
+All five methods validate tensor shapes, tensor-name sets, and dtype
+compatibility **before** producing any output — merging checkpoints from
 architecturally incompatible configs (different hidden sizes, different
-attention schedules, mismatched vocabularies) fails loudly at the
-validation step. This project has never silently produced a corrupted
-or nonsensical checkpoint from a mismatched operation, and merging is
-no exception.
+attention schedules, mismatched vocabularies, mismatched tensor names)
+fails loudly at the validation step. This project has never silently
+produced a corrupted or nonsensical checkpoint from a mismatched
+operation, and merging is no exception. No output byte is written on
+validation failure.
+
+### MoE / MLA / MTP Transparency
+
+Merging operates on raw `HashMap<String, Tensor>` name/shape-matched
+maps loaded from disk via `candle_core::safetensors::load`. Expert
+weights, router weights, MLA projections, and MTP heads all merge
+identically to any other tensor — there is no architecture-specific
+special-casing and no `reject_*` guard, because none is needed at the
+tensor level. A fine-grained MoE checkpoint (v3 §40) and a dense
+checkpoint merge through the exact same code path.
 
 ### Measured, Not Assumed
 
@@ -1017,7 +1063,47 @@ A merged checkpoint's eval-harness scorecard is reported honestly
 against both of its input checkpoints' individual scores — merging is
 not assumed to be strictly additive or strictly beneficial, following
 the identical "measure, don't assume" framing v2 §26 established for
-MoE and every subsequent capability claim has held since.
+MoE and every subsequent capability claim has held since. The
+`MergeReport` struct carries only structural facts (tensor counts,
+SLERP fallback counts, TIES conflict counts, DARE dropped fraction);
+any quality claim is measured separately by the `eval` command against
+the merged artifact.
+
+### Implementation (Phase 50, v4.0.0-alpha.10)
+
+- **`aarambh-studio-weights/src/merge.rs`** — the merge module:
+  - `MergeMethod` enum (`Linear`, `Slerp`, `TaskArithmetic`, `Ties`,
+    `Dare`) with `is_task_vector_family()` classifier.
+  - `MergeConfig` struct (method, weights, scales, density, normalize,
+    seed) with a `new(method)` constructor defaulting density to `0.5`.
+  - `MergeReport` struct (method, input_count, tensor_count,
+    output_path, slerp_linear_fallback_count, ties_resolved_tensors,
+    dare_dropped_fraction) — structural facts only, no quality claim.
+  - `merge_models_from_paths(config, inputs, base, deltas, output,
+    merge)` — the top-level entry point that validates, dispatches to
+    the chosen algorithm, sorts keys for deterministic output, and
+    writes the merged SafeTensors file.
+  - `SLERP_PARALLEL_EPSILON` and `DEFAULT_DENSITY` constants.
+  - A dependency-free `XorShift64` PRNG for DARE's deterministic drop
+    mask.
+- **`aarambh-studio/src/cmd/merge.rs`** — the top-level
+  `aarambh-studio merge` CLI with five subcommands (`linear`, `slerp`,
+  `task-arithmetic`, `ties`, `dare`), distinct from the existing
+  `finetune merge` adapter-folding command.
+- **Tests:** `crates/aarambh-studio-weights/tests/merge.rs` — four
+  roadmap-named acceptance tests plus nine supporting tests, all
+  running in milliseconds against tiny synthetic SafeTensors fixtures
+  built in a per-test temp directory (no committed artifacts).
+- **Smoke:** `scripts/phase50_smoke.sh` builds synthetic checkpoints,
+  runs every algorithm end-to-end, verifies shape-mismatch rejection
+  produces no output, and writes `artifacts/phase50_merge_smoke.json`.
+- **Runbook:** `docs/phase50_model_merging.md`.
+- **No new crate, no new external dependency.** Phase 50 extends the
+  existing `aarambh-studio-weights` crate with one new module; the only
+  changes to existing files were strictly additive (`pub mod merge;`
+  and re-exports in `lib.rs`, `pub mod merge;` in `cmd/mod.rs`, the
+  `Merge` variant in `main.rs`, and the `merge --help` lines in
+  `.github/workflows/ci.yml`).
 
 ---
 

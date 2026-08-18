@@ -38,6 +38,12 @@ results. **v4.0.0-alpha.9** adds **retrieval-augmented generation
 `aarambh-studio-retrieve` crate with a navigable small-world graph ANN,
 no external vector database) that augments the prompt with retrieved
 context before generation, without touching model internals.
+**v4.0.0-alpha.10** adds **model merging / weight averaging (Phase 50)**
+— a from-scratch, pure-Rust merging toolkit (a new `merge.rs` module in
+the existing `aarambh-studio-weights` crate, no new crate, no new
+external dependency) that combines two or more compatible checkpoints
+into one via five standard algorithms: linear/Model-Soups, SLERP,
+task-vector arithmetic, TIES-Merging, and DARE.
 
 > [!IMPORTANT]
 > This is a source and engineering project. It does not publish crates to
@@ -52,6 +58,7 @@ context before generation, without touching model internals.
 | Efficient architecture | YaRN/NTK/linear RoPE scaling, Gated DeltaNet, learned block-sparse DSA, Multi-Head Latent Attention (MLA), fine-grained MoE, sparse/grouped MoE dispatch, MTP |
 | Training | BPE data pipeline, AdamW, cosine schedule, gradient accumulation/clipping, checkpoint resume, BF16 CUDA, single-node multi-GPU, on-policy distillation, native INT4/INT8 QAT |
 | Fine-tuning | SFT, LoRA, QLoRA, DoRA, QDoRA, VLM adapters, GRPO, DPO, QDPO, RLAIF, tool-call tuning |
+| Model merging | Linear/Model-Soups, SLERP, task-vector arithmetic, TIES-Merging, DARE (Phase 50) |
 | Inference | Greedy/sampled decoding, streaming, thinking budgets, external or one-checkpoint MTP speculation, tool grammar, caller-executed chains, retrieval-augmented generation (Phase 49) |
 | Model formats | SafeTensors, INT8, GPTQ/AWQ INT4, GGUF, Hugging Face conversion, quantized KV cache |
 | Evaluation | Perplexity, MMLU-lite, HellaSwag, GSM8K, HumanEval-lite, preference, recall, multimodal/tool scorecards, capability forgetting curves, MoE routing drift, RAG vs no-retrieval delta (Phase 49) |
@@ -119,6 +126,7 @@ aarambh-studio eval        Run evaluation tasks and compare scorecards
 aarambh-studio quantise    Calibrate and export INT8/INT4 GGUF checkpoints
 aarambh-studio convert     Convert SafeTensors, GGUF, or Hugging Face layouts
 aarambh-studio finetune    Run SFT, adapters, GRPO, DPO, RLAIF, VLM, or merge workflows
+aarambh-studio merge       Merge compatible checkpoints (linear/SLERP/TIES/DARE/task-arithmetic)
 aarambh-studio distill     Train/evaluate on-policy or offline teacher distillation
 aarambh-studio selflearn   Manage replay and persistent self-learning state
 aarambh-studio serve       Start the OpenAI-compatible HTTP/SSE server
@@ -147,6 +155,7 @@ See the phase-specific docs for full walkthroughs with smoke fixtures:
 | Quantization (GPTQ, QAT, GGUF) | [docs/phase34_qat.md](docs/phase34_qat.md) |
 | MLA hybrid attention & KV-cache report | `aarambh-studio eval --kv-cache-report` + [docs/phase41_mla.md](docs/phase41_mla.md) |
 | Fine-tuning (SFT, adapters, GRPO, DPO) | `aarambh-studio finetune --help` |
+| Model merging (linear/SLERP/TIES/DARE/task-arithmetic) | [docs/phase50_model_merging.md](docs/phase50_model_merging.md) |
 | Self-learning | [SELF_LEARNING_V3.md](SELF_LEARNING_V3.md) |
 
 ```sh
@@ -277,6 +286,7 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
 | [docs/phase47_sandbox.md](docs/phase47_sandbox.md) | Sandboxed tool execution envelope, closed-world allowlist, reference executors, and honesty boundary |
 | [docs/phase48_orchestration.md](docs/phase48_orchestration.md) | Multi-agent orchestration: delegation plan, three hard bounds, failure isolation, and composability |
 | [docs/phase49_rag.md](docs/phase49_rag.md) | Retrieval-augmented generation: chunking, embedding heads, navigable small-world graph ANN, prompt augmentation, and honesty boundary |
+| [docs/phase50_model_merging.md](docs/phase50_model_merging.md) | Model merging / weight averaging: linear, SLERP, task-arithmetic, TIES-Merging, DARE, hard validation, and honesty boundary |
 | [RELEASE.md](RELEASE.md) | Source-release process and artifact policy |
 | [CHANGELOG.md](CHANGELOG.md) | Versioned implementation history |
 
@@ -306,7 +316,14 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
   (an optional plug-in adapter may exist, but the from-scratch index
   remains the default and the tested path); the default tested embedder
   is weight-free (hashing) so the whole pipeline runs without a trained
-  embedding checkpoint.
+  embedding checkpoint. Phase 50 adds model merging / weight averaging
+  (`aarambh-studio merge`) with five standard algorithms (linear,
+  SLERP, task-arithmetic, TIES-Merging, DARE) operating on raw
+  `HashMap<String, Tensor>` maps; merging is offline, CPU-first, f32
+  math, with hard shape/schema validation before any write. A merged
+  checkpoint's quality is measured by the `eval` command, never assumed
+  improved — and merging is deliberately kept separate from the online
+  self-learning loop (the same framing RLAIF uses).
 - Video is visual-only H.264 MP4; audio is WAV PCM only (no MP3/FLAC/Ogg).
 - Documents are pixel-based (no OCR/table parser).
 - The server is local/single-model; vision, audio, and self-learning are CLI workflows.
@@ -328,7 +345,7 @@ reproducible bugs and scoped feature requests. Report vulnerabilities through
   author  = {Aarambh Dev Hub},
   year    = {2026},
   url     = {https://github.com/AarambhDevHub/aarambh-studio},
-  version = {4.0.0-alpha.9},
+  version = {4.0.0-alpha.10},
   license = {Apache-2.0}
 }
 ```
