@@ -67,7 +67,10 @@ fn phase49_end_to_end_build_and_query_smoke_corpus() {
     let corpus = corpus_dir();
     assert!(
         corpus.is_dir(),
-        "smoke corpus dir exists: {}",
+        "smoke corpus dir not found at {}\n\
+         This usually means the data/rag_smoke_corpus/ fixtures were not committed \
+         (check .gitignore — data/* is ignored by default; data/rag_smoke_corpus/ \
+         must be explicitly un-ignored).",
         corpus.display()
     );
     let output = output_dir();
