@@ -387,18 +387,19 @@ mod tests {
     fn corpus_dir_without_text_files_errors() {
         let tok = StubTokenizer::new();
         let chunker = Chunker::new(ChunkingConfig::new(8, 4).unwrap());
-        let tmp = tempdir();
+        let tmp = tempdir("no-text-files");
         // Add a non-text file so the dir is non-empty but has no corpus files.
         std::fs::write(tmp.join("image.bin"), b"\x00\x01").unwrap();
         let err = chunker.chunk_corpus(&tok, &tmp).unwrap_err();
         assert!(matches!(err, AarambhError::Config(_)), "{err:?}");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn corpus_chunking_assigns_monotonic_ids_across_files() {
         let tok = StubTokenizer::new();
         let chunker = Chunker::new(ChunkingConfig::new(6, 2).unwrap());
-        let tmp = tempdir();
+        let tmp = tempdir("monotonic-ids");
         std::fs::write(tmp.join("a.txt"), "aaaaaaaaaaaaaaaa").unwrap();
         std::fs::write(tmp.join("b.txt"), "bbbbbbbbbbbbbbbb").unwrap();
         let chunks = chunker.chunk_corpus(&tok, &tmp).unwrap();
@@ -410,23 +411,21 @@ mod tests {
             let name = c.source.file_name().unwrap().to_string_lossy().to_string();
             assert!(name == "a.txt" || name == "b.txt", "{name}");
         }
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// Tiny tempdir helper (avoids pulling a dev-dependency for one test).
-    fn tempdir() -> PathBuf {
-        let mut dir = std::env::temp_dir();
+    /// Create a unique temp directory for a test. The caller is responsible
+    /// for cleaning it up (e.g. via `let _ = std::fs::remove_dir_all(&tmp);`
+    /// at the end of the test). The directory name includes the `tag` so
+    /// parallel tests never collide.
+    fn tempdir(tag: &str) -> PathBuf {
         let nano = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        dir.push(format!("aarambh-rag-test-{}", nano));
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("aarambh-rag-test-{tag}-{pid}-{nano}"));
         std::fs::create_dir_all(&dir).unwrap();
-        // Clean up on process exit best-effort.
-        let to_remove = dir.clone();
-        std::thread::spawn(move || {
-            // Best-effort: tests are short-lived; rely on tmp reaper.
-            let _ = std::fs::remove_dir_all(&to_remove);
-        });
         dir
     }
 }
