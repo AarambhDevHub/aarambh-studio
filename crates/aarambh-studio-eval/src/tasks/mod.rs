@@ -26,6 +26,8 @@ pub mod mmlu_lite;
 pub mod ppl_task;
 /// Pairwise preference-ranking task.
 pub mod preference;
+/// Retrieval-augmented generation task (Phase 49).
+pub mod rag;
 /// Grammar-constrained function-selection task.
 pub mod tool_calling;
 /// Scripted caller-response long-horizon tool-chain task.
@@ -46,6 +48,7 @@ pub use image_caption::ImageCaptionTask;
 pub use mmlu_lite::MmluLiteTask;
 pub use ppl_task::PplTask;
 pub use preference::PreferenceTask;
+pub use rag::RagTask;
 pub use tool_calling::ToolCallingTask;
 pub use tool_chain::ToolChainTask;
 pub use video_qa::VideoQaTask;

@@ -18,6 +18,7 @@ cuda = [
     "aarambh-studio-inference/cuda",
     "aarambh-studio-model/cuda",
     "aarambh-studio-quant/cuda",
+    "aarambh-studio-retrieve/cuda",
     "aarambh-studio-safety/cuda",
     "aarambh-studio-serve/cuda",
     "aarambh-studio-selflearn/cuda",
@@ -38,6 +39,7 @@ aarambh-studio-finetune  = { path = "../crates/aarambh-studio-finetune" }
 aarambh-studio-inference = { path = "../crates/aarambh-studio-inference" }
 aarambh-studio-model     = { path = "../crates/aarambh-studio-model" }
 aarambh-studio-quant     = { path = "../crates/aarambh-studio-quant" }
+aarambh-studio-retrieve  = { path = "../crates/aarambh-studio-retrieve" }
 aarambh-studio-safety    = { path = "../crates/aarambh-studio-safety" }
 aarambh-studio-serve     = { path = "../crates/aarambh-studio-serve" }
 aarambh-studio-selflearn = { path = "../crates/aarambh-studio-selflearn" }

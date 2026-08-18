@@ -16,6 +16,7 @@ data/*
 !data/agent_results_smoke.jsonl
 !data/distill_smoke_prompts.jsonl
 !data/distill_smoke_teacher.jsonl
+!data/rag_smoke_corpus/
 !data/eval/
 data/eval/*
 !data/eval/preference/
@@ -30,6 +31,9 @@ data/eval/tool_chain/*
 !data/eval/associative_recall/
 data/eval/associative_recall/*
 !data/eval/associative_recall/data.jsonl
+!data/eval/rag/
+data/eval/rag/*
+!data/eval/rag/data.jsonl
 !data/eval/forgetting/
 data/eval/forgetting/*
 !data/eval/forgetting/probes.json

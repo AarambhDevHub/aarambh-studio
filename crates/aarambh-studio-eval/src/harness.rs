@@ -11,7 +11,7 @@ use crate::report::{Scorecard, TaskScore};
 use crate::tasks::{
     AssociativeRecallTask, AudioQaTask, DocumentQaTask, Gsm8kSubsetTask, HardProblemsTask,
     HellaSwagTask, HumanEvalLiteTask, ImageCaptionTask, MmluLiteTask, PplTask, PreferenceTask,
-    ToolCallingTask, ToolChainTask, VideoQaTask, VqaTask,
+    RagTask, ToolCallingTask, ToolChainTask, VideoQaTask, VqaTask,
 };
 
 /// Evaluation run configuration.
@@ -166,6 +166,7 @@ fn selected_tasks(selectors: &[String], allow_code_exec: bool) -> Result<Vec<Box
             "gsm8k",
             "hard-problems",
             "humaneval",
+            "rag",
         ]
     } else {
         selectors.iter().map(String::as_str).collect::<Vec<_>>()
@@ -205,6 +206,9 @@ fn selected_tasks(selectors: &[String], allow_code_exec: bool) -> Result<Vec<Box
             "preference" | "dpo" | "preference-win-rate" | "preference_win_rate" => {
                 tasks.push(Box::new(PreferenceTask));
             }
+            "rag" | "rag-qa" | "rag_qa" | "retrieval" | "retrieval-augmented" => {
+                tasks.push(Box::new(RagTask));
+            }
             "tool-calling" | "tool_calling" | "function-calling" | "function_calling" => {
                 tasks.push(Box::new(ToolCallingTask));
             }
@@ -215,7 +219,7 @@ fn selected_tasks(selectors: &[String], allow_code_exec: bool) -> Result<Vec<Box
             }
             other => {
                 return Err(AarambhError::Config(format!(
-                    "unknown eval task '{other}', expected ppl,mmlu,hellaswag,gsm8k,hard-problems,humaneval,preference,image-caption,vqa,video-qa,document-qa,audio-qa,tool-calling,tool-chain,associative-recall,all"
+                    "unknown eval task '{other}', expected ppl,mmlu,hellaswag,gsm8k,hard-problems,humaneval,preference,image-caption,vqa,video-qa,document-qa,audio-qa,tool-calling,tool-chain,associative-recall,rag,all"
                 )));
             }
         }

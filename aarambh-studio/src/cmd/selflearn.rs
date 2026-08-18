@@ -283,6 +283,9 @@ fn run_start(args: StartArgs) -> anyhow::Result<()> {
         best_of_n: None,
         selection: "self-consistency".into(),
         ground_truth: None,
+        rag: false,
+        index: None,
+        rag_top_k: 4,
     })
 }
 

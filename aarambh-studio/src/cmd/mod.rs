@@ -5,6 +5,7 @@ pub mod eval;
 pub mod finetune;
 pub mod infer;
 pub mod quantise;
+pub mod retrieve;
 pub mod selflearn;
 pub mod serve;
 pub mod train;

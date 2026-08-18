@@ -1,0 +1,30 @@
+{
+  "phase": 49,
+  "title": "Retrieval-Augmented Generation (RAG)",
+  "retrieve_unit_tests": "passed",
+  "eval_rag_task_unit_tests": "passed",
+  "cli_flags_surface": [
+    "retrieve build-index --corpus",
+    "retrieve build-index --output",
+    "retrieve build-index --chunk-size",
+    "retrieve build-index --overlap",
+    "retrieve build-index --top-k",
+    "retrieve build-index --embedding-dim",
+    "retrieve build-index --embedder",
+    "retrieve build-index --max-neighbors",
+    "retrieve build-index --ef-construction",
+    "retrieve build-index --ef-search",
+    "infer --rag",
+    "infer --index",
+    "infer --rag-top-k"
+  ],
+  "index_build_and_query_round_trip": true,
+  "retrieval_recall_documented_floor": true,
+  "rag_prompt_augmentation_preserves_user_query": true,
+  "chunking_overlap_no_duplicate_entries": true,
+  "no_external_vector_database": true,
+  "no_new_external_dependency": true,
+  "new_crate": "aarambh-studio-retrieve",
+  "end_to_end_index_build": "passed",
+  "honesty_note": "RAG is purely additive: a new crate (aarambh-studio-retrieve) with a from-scratch navigable small-world graph ANN (no FFI to an external vector-search library) and a weight-free HashingEmbedder as the default tested path so the whole pipeline runs in milliseconds without a trained embedding checkpoint \u2014 mirroring the Phase 47/48 'fake decoder for tests, real engine for production' discipline. Retrieved chunks are spliced into the prompt ahead of the user's question via the same prompt-construction path the inference engine already uses; the decoder is unchanged. The rag eval task measures no_retrieval_accuracy / rag_accuracy / rag_delta, following the same 'X vs baseline' reporting discipline the gsm8k best-of-N task uses."
+}
