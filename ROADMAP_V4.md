@@ -930,25 +930,25 @@ to reason about.
 
 **`aarambh-studio-retrieve`** *(new crate, Layer 4)*:
 ```
-[ ] src/lib.rs
-[ ] src/embedding.rs
+[x] src/lib.rs
+[x] src/embedding.rs
       A small, dedicated text-embedding head — contrastively trained,
       CPU-capable, separate from the main decoder — turns a chunk of
       text into a fixed-size vector
-[ ] src/index.rs
+[x] src/index.rs
       A from-scratch approximate-nearest-neighbour index (graph-based,
       pure Rust, no FFI to an external vector-search library) —
       insert(), search(top_k), persist-to-disk, load-from-disk
-[ ] src/chunking.rs
+[x] src/chunking.rs
       Document chunking policy (fixed-size with overlap, configurable)
-[ ] src/retrieval.rs
+[x] src/retrieval.rs
       RetrievalPipeline::query() — embed the query, search the index,
       return top-k chunks
 ```
 
 **Fusion (deliberately simple):**
 ```
-[ ] Retrieved chunks are spliced into the existing prompt-construction
+[x] Retrieved chunks are spliced into the existing prompt-construction
     path as additional context ahead of the user's question — the same
     mechanism that already assembles system prompt + chat history +
     user turn, not a new model-level fusion mechanism. RAG augments the
@@ -957,8 +957,8 @@ to reason about.
 
 **`aarambh-studio` CLI:**
 ```
-[ ] aarambh-studio retrieve build-index --corpus docs/ --output my_index/
-[ ] aarambh-studio infer --rag --index my_index/ --prompt "..."
+[x] aarambh-studio retrieve build-index --corpus docs/ --output my_index/
+[x] aarambh-studio infer --rag --index my_index/ --prompt "..."
 ```
 
 ### Tests
