@@ -65,7 +65,11 @@ fn output_dir() -> PathBuf {
 #[test]
 fn phase49_end_to_end_build_and_query_smoke_corpus() {
     let corpus = corpus_dir();
-    assert!(corpus.is_dir(), "smoke corpus dir exists: {}", corpus.display());
+    assert!(
+        corpus.is_dir(),
+        "smoke corpus dir exists: {}",
+        corpus.display()
+    );
     let output = output_dir();
     let config = RetrievalConfig {
         embedding_dim: 256,
@@ -83,7 +87,12 @@ fn phase49_end_to_end_build_and_query_smoke_corpus() {
     let results = pipeline.query("What is the capital of France?").unwrap();
     assert!(!results.is_empty(), "query returned at least one chunk");
     let top = &results[0];
-    let top_source = top.source.file_name().unwrap().to_string_lossy().to_string();
+    let top_source = top
+        .source
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
     assert!(
         top_source == "geography.txt",
         "top-1 retrieved chunk for 'capital of France' came from {top_source}, expected geography.txt"
