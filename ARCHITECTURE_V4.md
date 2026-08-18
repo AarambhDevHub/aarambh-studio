@@ -905,7 +905,7 @@ missing or malformed entry.
 
 ## 63. Retrieval-Augmented Generation (RAG)
 
-**Crate:** `aarambh-studio-retrieve` (new) | **Depends on:** none within the model itself — deliberately a prompt-level augmentation, not a model-internals change
+**Crate:** `aarambh-studio-retrieve` (new) | **Depends on:** none within the model itself — deliberately a prompt-level augmentation, not a model-internals change | **Status:** shipped in v4.0.0-alpha.9 (Phase 49) — `chunking.rs`, `embedding.rs` (`HashingEmbedder` default + `TextEmbedder` trained-head), `index.rs` (navigable small-world graph ANN, pure Rust), `retrieval.rs` (`RetrievalPipeline::query()`, `augment_prompt()`); CLI `retrieve build-index` and `infer --rag --index`; eval `rag` task reporting `no_retrieval_accuracy`/`rag_accuracy`/`rag_delta`; see `docs/phase49_rag.md`.
 
 ### Deliberately the Simplest Correct Design
 

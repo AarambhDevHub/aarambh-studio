@@ -13,6 +13,7 @@ cuda = [
     "aarambh-studio-core/cuda",
     "aarambh-studio-finetune/cuda",
     "aarambh-studio-model/cuda",
+    "aarambh-studio-retrieve/cuda",
     "aarambh-studio-train/cuda",
     "aarambh-studio-vision/cuda",
     "aarambh-studio-weights/cuda",
@@ -26,6 +27,7 @@ aarambh-studio-core      = { path = "../aarambh-studio-core" }
 aarambh-studio-finetune  = { path = "../aarambh-studio-finetune" }
 aarambh-studio-inference = { path = "../aarambh-studio-inference" }
 aarambh-studio-model     = { path = "../aarambh-studio-model" }
+aarambh-studio-retrieve  = { path = "../aarambh-studio-retrieve" }
 aarambh-studio-safety    = { path = "../aarambh-studio-safety" }
 aarambh-studio-tokenizer = { path = "../aarambh-studio-tokenizer" }
 aarambh-studio-train     = { path = "../aarambh-studio-train" }

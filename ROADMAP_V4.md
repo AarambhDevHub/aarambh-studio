@@ -991,6 +991,24 @@ git commit -m "feat: Phase 49 — retrieval-augmented generation"
 git tag v4.0.0-alpha.9
 ```
 
+> **Status: shipped in v4.0.0-alpha.9** — the new
+> `crates/aarambh-studio-retrieve` crate (Layer 4, 21st workspace member)
+> ships the from-scratch pure-Rust retrieval pipeline: `chunking.rs`
+> (fixed-size token-based chunking with overlap), `embedding.rs` (a
+> weight-free `HashingEmbedder` as the default tested path plus a
+> candle-backed `TextEmbedder` as the trained-head architecture),
+> `index.rs` (a navigable small-world graph ANN with `insert`/`search`/
+> `save`/`load`, no FFI to an external vector-search library), and
+> `retrieval.rs` (`RetrievalPipeline::query()` and `augment_prompt()`
+> splicing retrieved chunks into the existing prompt-construction path
+> ahead of the user's question). CLI: `retrieve build-index` and
+> `infer --rag --index <PATH> --rag-top-k N`. Eval: the `rag` task reports
+> `no_retrieval_accuracy` / `rag_accuracy` / `rag_delta` details. Four
+> roadmap-named acceptance tests plus 25 supporting tests run in
+> milliseconds. No external vector-database dependency was added; an
+> optional plug-in adapter is a documented extension point, not shipped.
+> See `docs/phase49_rag.md` for the runbook and the honesty boundary.
+
 ---
 
 ## Phase 50 — Model Merging / Weight Averaging

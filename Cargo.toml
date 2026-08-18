@@ -19,12 +19,13 @@ members = [
     "crates/aarambh-studio-audio",
     "crates/aarambh-studio-distill",
     "crates/aarambh-studio-serve",
+    "crates/aarambh-studio-retrieve",
     "aarambh-studio",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "4.0.0-alpha.8"
+version = "4.0.0-alpha.9"
 edition = "2024"
 rust-version = "1.89"
 description = "From first principles. From zero. From Rust."

@@ -28,6 +28,7 @@ enum Command {
     Finetune(Box<cmd::finetune::FinetuneArgs>),
     Selflearn(Box<cmd::selflearn::SelflearnArgs>),
     Serve(cmd::serve::ServeArgs),
+    Retrieve(cmd::retrieve::RetrieveArgs),
 }
 
 fn main() -> anyhow::Result<()> {
@@ -43,5 +44,6 @@ fn main() -> anyhow::Result<()> {
         Command::Finetune(args) => cmd::finetune::run(*args),
         Command::Selflearn(args) => cmd::selflearn::run(*args),
         Command::Serve(args) => cmd::serve::run(args),
+        Command::Retrieve(args) => cmd::retrieve::run(args),
     }
 }

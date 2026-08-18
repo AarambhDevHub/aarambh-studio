@@ -1,0 +1,17 @@
+{
+  "chunking": {
+    "chunk_size": 128,
+    "overlap": 24
+  },
+  "index": {
+    "dim": 128,
+    "max_neighbors": 16,
+    "ef_construction": 64,
+    "ef_search": 32
+  },
+  "embedder_kind": "hashing",
+  "embedding_dim": 128,
+  "top_k": 4,
+  "corpus_dir": "data/rag_smoke_corpus",
+  "output_dir": "checkpoints/rag_smoke_index"
+}

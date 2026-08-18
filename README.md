@@ -33,7 +33,11 @@ sub-agent count, maximum total execution time budget, and sandbox scope
 containment (a sub-agent's `AuthorizationScope` can only be a subset of
 its orchestrator's, never wider) — and one sub-agent's failure is
 contained to its own outcome, never corrupting sibling sub-agents'
-results.
+results. **v4.0.0-alpha.9** adds **retrieval-augmented generation
+(Phase 49)** — a from-scratch, pure-Rust retrieval pipeline (a new
+`aarambh-studio-retrieve` crate with a navigable small-world graph ANN,
+no external vector database) that augments the prompt with retrieved
+context before generation, without touching model internals.
 
 > [!IMPORTANT]
 > This is a source and engineering project. It does not publish crates to
@@ -48,9 +52,9 @@ results.
 | Efficient architecture | YaRN/NTK/linear RoPE scaling, Gated DeltaNet, learned block-sparse DSA, Multi-Head Latent Attention (MLA), fine-grained MoE, sparse/grouped MoE dispatch, MTP |
 | Training | BPE data pipeline, AdamW, cosine schedule, gradient accumulation/clipping, checkpoint resume, BF16 CUDA, single-node multi-GPU, on-policy distillation, native INT4/INT8 QAT |
 | Fine-tuning | SFT, LoRA, QLoRA, DoRA, QDoRA, VLM adapters, GRPO, DPO, QDPO, RLAIF, tool-call tuning |
-| Inference | Greedy/sampled decoding, streaming, thinking budgets, external or one-checkpoint MTP speculation, tool grammar, caller-executed chains |
+| Inference | Greedy/sampled decoding, streaming, thinking budgets, external or one-checkpoint MTP speculation, tool grammar, caller-executed chains, retrieval-augmented generation (Phase 49) |
 | Model formats | SafeTensors, INT8, GPTQ/AWQ INT4, GGUF, Hugging Face conversion, quantized KV cache |
-| Evaluation | Perplexity, MMLU-lite, HellaSwag, GSM8K, HumanEval-lite, preference, recall, multimodal/tool scorecards, capability forgetting curves, and MoE routing drift |
+| Evaluation | Perplexity, MMLU-lite, HellaSwag, GSM8K, HumanEval-lite, preference, recall, multimodal/tool scorecards, capability forgetting curves, MoE routing drift, RAG vs no-retrieval delta (Phase 49) |
 | Vision | Frozen CLIP-style encoder, image/video/document fusion, temporal and 2D layout encoding, multimodal DoRA/QDoRA tuning |
 | Audio | Frozen audio spectrogram transformer, pure-Rust WAV decode + mel-spectrogram, `<audio>` token fusion, audio DoRA/QDoRA tuning (Phase 42) |
 | Runtime | CPU SIMD, Rayon attention, optional custom CUDA PTX kernels, Axum 0.8.9 HTTP/SSE server |
@@ -192,7 +196,7 @@ any of `none`, `low`, `medium`, `high`, or `max`. The server also accepts
 
 ## Workspace
 
-The workspace contains 19 internal library crates and one CLI package:
+The workspace contains 20 internal library crates and one CLI package:
 
 ```text
 aarambh-studio-core        Shared config, device, dtype, errors, and traits
@@ -214,6 +218,7 @@ aarambh-studio-vision      Image/video/document decode, preprocessing, temporal/
 aarambh-studio-audio       WAV decode, mel-spectrogram, frozen audio encoder, fusion (Phase 42)
 aarambh-studio-distill     On-policy rollouts, teacher scoring, losses, and resume
 aarambh-studio-serve       Axum HTTP/SSE serving and continuous batching
+aarambh-studio-retrieve    From-scratch RAG: chunking, embeddings, graph ANN index, prompt augmentation (Phase 49)
 aarambh-studio             Command-line application
 ```
 
@@ -271,6 +276,7 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
 | [docs/phase46_rlaif.md](docs/phase46_rlaif.md) | RLAIF judge-model preference-pair generation feeding the existing DPO pipeline |
 | [docs/phase47_sandbox.md](docs/phase47_sandbox.md) | Sandboxed tool execution envelope, closed-world allowlist, reference executors, and honesty boundary |
 | [docs/phase48_orchestration.md](docs/phase48_orchestration.md) | Multi-agent orchestration: delegation plan, three hard bounds, failure isolation, and composability |
+| [docs/phase49_rag.md](docs/phase49_rag.md) | Retrieval-augmented generation: chunking, embedding heads, navigable small-world graph ANN, prompt augmentation, and honesty boundary |
 | [RELEASE.md](RELEASE.md) | Source-release process and artifact policy |
 | [CHANGELOG.md](CHANGELOG.md) | Versioned implementation history |
 
@@ -294,7 +300,13 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
   containment via `AuthorizationScope::intersect`); sub-chains run
   sequentially by default (CPU-first honest — true parallelism would
   require a `Send + Sync` `ChainDecoder`, out of scope for the source
-  release).
+  release). Phase 49 adds retrieval-augmented generation (`infer --rag`)
+  with a from-scratch pure-Rust navigable small-world graph index — no
+  external vector database dependency is permitted for the core RAG index
+  (an optional plug-in adapter may exist, but the from-scratch index
+  remains the default and the tested path); the default tested embedder
+  is weight-free (hashing) so the whole pipeline runs without a trained
+  embedding checkpoint.
 - Video is visual-only H.264 MP4; audio is WAV PCM only (no MP3/FLAC/Ogg).
 - Documents are pixel-based (no OCR/table parser).
 - The server is local/single-model; vision, audio, and self-learning are CLI workflows.
@@ -316,7 +328,7 @@ reproducible bugs and scoped feature requests. Report vulnerabilities through
   author  = {Aarambh Dev Hub},
   year    = {2026},
   url     = {https://github.com/AarambhDevHub/aarambh-studio},
-  version = {4.0.0-alpha.8},
+  version = {4.0.0-alpha.9},
   license = {Apache-2.0}
 }
 ```

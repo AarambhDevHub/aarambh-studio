@@ -204,6 +204,20 @@ pub struct InferArgs {
     /// Ground-truth answer required when --selection verifier is used (Phase 45).
     #[arg(long)]
     pub ground_truth: Option<String>,
+    /// Enable retrieval-augmented generation (Phase 49). When set, requires
+    /// `--index <PATH>` pointing at an index built by `retrieve build-index`.
+    /// Retrieved chunks are spliced into the prompt ahead of the user's
+    /// question before generation; the decoder is unchanged.
+    #[arg(long)]
+    pub rag: bool,
+    /// Path to a retrieval index directory (built by `retrieve build-index`).
+    /// Required when `--rag` is set.
+    #[arg(long, requires = "rag")]
+    pub index: Option<PathBuf>,
+    /// Number of chunks to retrieve per RAG query (default 4). Only used with
+    /// `--rag`.
+    #[arg(long, default_value_t = 4, requires = "rag")]
+    pub rag_top_k: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -216,6 +230,26 @@ pub fn run(args: InferArgs) -> anyhow::Result<()> {
         return Err(anyhow::anyhow!(
             "--frames and --frame-sampling require --video"
         ));
+    }
+    if args.rag {
+        // RAG augments the text prompt ahead of the user's question. It does
+        // not touch the decoder, so it is text-only by design — mirroring the
+        // best-of-N discipline. Multimodal paths construct their own prompts
+        // (image/video/document/audio tokens spliced at the embedding level),
+        // which is a different fusion mechanism than prompt augmentation.
+        if args.image.is_some()
+            || args.video.is_some()
+            || args.document.is_some()
+            || args.audio.is_some()
+        {
+            return Err(AarambhError::Unsupported(
+                "RAG (--rag) is text-only; --image/--video/--document/--audio are not supported with --rag".into(),
+            )
+            .into());
+        }
+        if args.index.is_none() {
+            return Err(anyhow::anyhow!("--rag requires --index <PATH>"));
+        }
     }
     let run_config = TrainingRunConfig::from_toml(&args.config)?;
     let run_device = run_config.device()?;
@@ -255,6 +289,36 @@ pub fn run(args: InferArgs) -> anyhow::Result<()> {
         args.prompt.clone()
     } else {
         prompt_for_mode(&args.prompt, thinking_mode)
+    };
+    // Phase 49: retrieval-augmented generation splices retrieved chunks into
+    // the prompt ahead of the user's question *before* any generation path
+    // runs. The decoder is unchanged — this is pure prompt augmentation.
+    let prompt = if args.rag {
+        let index_dir = args
+            .index
+            .as_ref()
+            .expect("validated: --rag requires --index");
+        let pipeline =
+            aarambh_studio_retrieve::RetrievalPipeline::load_hashing(index_dir, args.rag_top_k)?;
+        let retrieved = pipeline.query(&args.prompt)?;
+        eprintln!(
+            "[rag] retrieved {} chunks (top_k={}) from {}",
+            retrieved.len(),
+            args.rag_top_k,
+            index_dir.display()
+        );
+        for (i, chunk) in retrieved.iter().enumerate() {
+            eprintln!(
+                "  [{}] score={:.4} source={} offset={}",
+                i + 1,
+                chunk.score,
+                chunk.source.display(),
+                chunk.offset
+            );
+        }
+        aarambh_studio_retrieve::augment_prompt(&prompt, &retrieved)
+    } else {
+        prompt
     };
     if args.best_of_n.is_some() {
         return run_best_of_n_infer(
@@ -2579,6 +2643,9 @@ mod tests {
             best_of_n: None,
             selection: "self-consistency".into(),
             ground_truth: None,
+            rag: false,
+            index: None,
+            rag_top_k: 4,
         }
     }
 

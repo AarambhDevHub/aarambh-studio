@@ -2,6 +2,113 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0-alpha.9] - 2026-09-06
+
+### Added
+
+- **Phase 49 — Retrieval-Augmented Generation (RAG):** A from-scratch,
+  pure-Rust retrieval pipeline. No external vector database is required,
+  and none is used — the approximate-nearest-neighbour index is a
+  navigable small-world graph implemented entirely in the new
+  `aarambh-studio-retrieve` crate (no FFI to an external vector-search
+  library). Retrieved context augments the prompt *before* generation; it
+  does not touch model internals. RAG augments the prompt; it does not
+  change how the decoder processes it. This keeps the phase entirely
+  additive and simple to reason about.
+  - New crate `aarambh-studio-retrieve` (Layer 4, 21st workspace member):
+    `src/lib.rs`, `src/chunking.rs` (fixed-size token-based chunking with
+    overlap, configurable; assigns monotonically-increasing chunk ids
+    with byte offsets so overlap never duplicates index entries),
+    `src/embedding.rs` (two text-embedding heads — a deterministic,
+    weight-free `HashingEmbedder` that is the default tested path so the
+    full pipeline runs end-to-end without a trained checkpoint, and a
+    candle-backed `TextEmbedder` that is the contrastively-trained,
+    CPU-capable, separate-from-the-decoder head shape the roadmap
+    describes, loadable as weights — both implement the `Embed` trait and
+    return L2-normalized vectors so cosine similarity is a plain dot
+    product), `src/index.rs` (a from-scratch navigable small-world graph
+    ANN — `VectorIndex::insert` / `search` / `save` / `load`, with
+    `IndexConfig{dim,max_neighbors,ef_construction,ef_search}`, persisted
+    as a single human-readable `index.json`), and `src/retrieval.rs`
+    (`RetrievalPipeline::query()` — embed the query, search the index,
+    return top-k chunks; `augment_prompt()` splices retrieved chunks into
+    the existing prompt-construction path ahead of the user's question;
+    `build_index()` is the corpus → index orchestration).
+  - **Fusion (deliberately simple):** retrieved chunks are spliced into
+    the existing prompt-construction path as additional context ahead of
+    the user's question — the same mechanism that already assembles
+    system prompt + chat history + user turn, not a new model-level
+    fusion mechanism. RAG augments the prompt; it does not change how the
+    decoder processes it.
+  - **CLI:** the new `retrieve` subcommand ships
+    `aarambh-studio retrieve build-index --corpus docs/ --output my_index/`
+    with configurable `--chunk-size`, `--overlap`, `--top-k`,
+    `--embedding-dim`, `--embedder hashing|text`, `--max-neighbors`,
+    `--ef-construction`, and `--ef-search`. The `infer` command gains
+    `--rag`, `--index <PATH>`, `--rag-top-k N` — when `--rag` is set,
+    the pipeline loads the index, retrieves top-k chunks for the prompt,
+    and splices them in ahead of the user's question before any
+    generation path runs. `--rag` is text-only by design (mirrors the
+    best-of-N discipline); combining it with `--image/--video/--document/--audio`
+    returns `Unsupported`.
+  - **Eval harness:** new `rag` task
+    (`crates/aarambh-studio-eval/src/tasks/rag.rs`) loads
+    `data/eval/rag/data.jsonl` (question / answer / supporting_documents),
+    builds a fresh in-memory index per example, retrieves top-k, splices
+    into the prompt, generates greedily, and reports `accuracy` plus
+    `no_retrieval_accuracy`, `rag_accuracy`, and `rag_delta` details —
+    the measured, reported improvement RAG produces on a factual eval
+    task versus the no-retrieval baseline, following the same "X vs
+    baseline" reporting discipline the gsm8k best-of-N task established.
+  - **Tests:** four roadmap-named acceptance tests (one per acceptance
+    criterion in `ROADMAP_V4.md` §"Phase 49 — Tests") plus 25 supporting
+    tests across the retrieve crate and the eval task, all running in
+    milliseconds:
+    `index_build_and_query_round_trip_returns_the_inserted_chunk`,
+    `retrieval_recall_on_a_small_labelled_holdout_meets_a_documented_floor`
+    (recall@1 ≥ 0.8 documented floor),
+    `rag_augmented_prompt_contains_retrieved_context_and_preserves_user_query`
+    (the deterministic proof that augmentation preserves the user query
+    and precedes it with retrieved context), and
+    `chunking_with_overlap_does_not_duplicate_index_entries_incorrectly`.
+  - **Honesty boundary:** the default tested path uses the
+    `HashingEmbedder` (no trained weights) so the whole pipeline is
+    testable in milliseconds without a checkpoint — mirroring the Phase
+    47/48 "fake decoder for tests, real engine for production" discipline.
+    The `TextEmbedder` satisfies the architecture the roadmap describes
+    (a contrastively-trained, CPU-capable, separate-from-the-decoder
+    head, loadable as weights); when no embedding checkpoint is shipped,
+    the hashing embedder remains the default. An optional plug-in
+    adapter to an external vector store is a documented extension point
+    and is *not* implemented here — the from-scratch pure-Rust index
+    remains the default and the tested path, exactly as the
+    forbidden-dependencies rule requires.
+  - **Smoke:** `scripts/phase49_smoke.sh` runs the retrieve-crate unit
+    tests, verifies `retrieve build-index --help` surfaces the new flags,
+    builds an index from `data/rag_smoke_corpus/` and queries it
+    end-to-end, and writes a scorecard to
+    `artifacts/phase49_rag_smoke.json`. Config fixture:
+    `configs/rag_smoke.json`; corpus fixtures: three small text files
+    under `data/rag_smoke_corpus/`; eval fixture: `data/eval/rag/data.jsonl`.
+  - **Docs:** `docs/phase49_rag.md` is the runbook, mirroring
+    `docs/phase48_orchestration.md` in structure (Why this phase exists →
+    The retrieval envelope → The hard, non-negotiable bounds → Failure
+    isolation → Composability → CLI → Index schema → Tests → Smoke
+    workflow → Honesty boundary → What this enables next).
+  - **One new crate, no new external dependency.** Phase 49 adds
+    `aarambh-studio-retrieve` (depending only on `aarambh-studio-core`,
+    `aarambh-studio-tokenizer`, `candle-core`, `candle-nn`, `half`,
+    `serde`, `serde_json` — all already in the workspace). The only
+    changes to existing files were strictly additive: new match arms in
+    the eval harness, new `--rag` flags on `infer`, the new `Retrieve`
+    subcommand, and the new crate registered as a workspace member and a
+    binary dependency.
+
+### Changed
+
+- Bumped workspace version from `4.0.0-alpha.8` to `4.0.0-alpha.9`.
+  `Cargo.lock` updated to match.
+
 ## [4.0.0-alpha.8] - 2026-08-30
 
 ### Added
