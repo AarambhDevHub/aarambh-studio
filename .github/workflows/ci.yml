@@ -85,6 +85,12 @@ jobs:
           target/release/aarambh-studio finetune qdpo --help
           target/release/aarambh-studio finetune rlaif --help
           target/release/aarambh-studio finetune merge --help
+          target/release/aarambh-studio merge --help
+          target/release/aarambh-studio merge linear --help
+          target/release/aarambh-studio merge slerp --help
+          target/release/aarambh-studio merge task-arithmetic --help
+          target/release/aarambh-studio merge ties --help
+          target/release/aarambh-studio merge dare --help
           target/release/aarambh-studio distill --help
           target/release/aarambh-studio distill train --help
           target/release/aarambh-studio distill evaluate --help
