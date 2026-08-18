@@ -1,11 +1,11 @@
 //! Document chunking policy — fixed-size token-based chunks with overlap.
 //!
 //! Chunks are produced by tokenizing the source text (via the project
-//! [`TokenizerLike`](aarambh_studio_core::TokenizerLike) trait) and slicing the
-//! resulting token stream into windows of `chunk_size` tokens, each advanced
-//! by `chunk_size - overlap` tokens. Overlap guarantees that a fact spanning a
-//! chunk boundary is still retrievable from at least one chunk, while every
-//! chunk receives a distinct, monotonically-increasing id and a byte offset
+//! [`TokenizerLike`] trait) and slicing the resulting token stream into
+//! windows of `chunk_size` tokens, each advanced by `chunk_size - overlap`
+//! tokens. Overlap guarantees that a fact spanning a chunk boundary is still
+//! retrievable from at least one chunk, while every chunk receives a
+//! distinct, monotonically-increasing id and a byte offset
 //! into the source — so overlap never produces duplicate index entries.
 
 use std::path::{Path, PathBuf};

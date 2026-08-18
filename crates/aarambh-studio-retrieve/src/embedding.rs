@@ -86,8 +86,8 @@ impl TextEmbedderConfig {
 /// dedicated, contrastively-trained text-embedding head, CPU-capable,
 /// **separate from the main decoder**. It is constructed from a
 /// [`TextEmbedderConfig`] and a [`candle_nn::VarBuilder`], exactly like the
-/// main decoder's [`TokenEmbedding`](aarambh_studio_model::TokenEmbedding),
-/// and loads weights when a checkpoint is provided.
+/// main decoder's `TokenEmbedding` (in the `aarambh-studio-model` crate), and
+/// loads weights when a checkpoint is provided.
 pub struct TextEmbedder {
     config: TextEmbedderConfig,
     embedding: candle_nn::Embedding,

@@ -9,8 +9,8 @@
 //! The task builds a fresh in-memory retrieval index from the supporting
 //! documents, retrieves the `top_k` most similar chunks for the question,
 //! splices them into the prompt ahead of the question, and generates a
-//! completion with [`greedy_generate`]. The same question is *also* answered
-//! without retrieval as a baseline, so the scorecard reports both
+//! completion with the `greedy_generate` helper. The same question is *also*
+//! answered without retrieval as a baseline, so the scorecard reports both
 //! `no_retrieval_accuracy` and `rag_accuracy`, plus their `rag_delta` — the
 //! measured improvement RAG produces on a factual eval task.
 //!
