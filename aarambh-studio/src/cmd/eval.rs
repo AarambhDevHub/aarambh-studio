@@ -100,6 +100,13 @@ pub struct EvalArgs {
     /// Base RNG seed for best-of-N candidate sampling (Phase 45).
     #[arg(long, default_value_t = 0)]
     pub best_of_n_seed: u64,
+    /// Run the Phase 53 red-team / adversarial safety corpus against the v4.0
+    /// candidate build and write a pass/fail report. No model required.
+    #[arg(long)]
+    pub redteam: bool,
+    /// Where to write the red-team JSON report (default: artifacts/redteam_report.json).
+    #[arg(long, value_name = "PATH")]
+    pub redteam_report: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +120,14 @@ pub fn run(args: EvalArgs) -> anyhow::Result<()> {
     }
     if args.qat_compare {
         return run_qat_compare(&args);
+    }
+    if args.redteam {
+        let report_path = args.redteam_report.clone().unwrap_or_else(|| {
+            PathBuf::from(crate::cmd::eval_redteam::DEFAULT_REDTEAM_REPORT_PATH)
+        });
+        let report = crate::cmd::eval_redteam::run(&report_path)?;
+        let _ = report;
+        return Ok(());
     }
 
     let config_path = args

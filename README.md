@@ -63,6 +63,21 @@ fail-loud startup mismatch gate, a unified `ContextTruncationPolicy`
 and a canonical `docs/SAMPLING_DEFAULTS.md` reference. Not a new capability — a
 documentation and versioning pass on what was under-specified.
 
+**v4.0.0-alpha.13** adds **red-team / adversarial safety evaluation (Phase
+53)** — a single systematic, end-to-end adversarial-testing pass run once,
+near the end of v4.0, against the complete v4.0 attack surface: the safety
+layer (§13) and system-turn precedence (§66), the closed-world sandboxed
+tool-execution boundary (§61), the orchestrator hard bounds (§62), and the
+public-server auth / rate-limit / tenant-isolation surface (§65). A 24-case
+corpus (hand-authored / free-public-sourced only) carries a labelled
+expected outcome per case; a failing case is surfaced plainly in the report,
+never silently dropped. New `aarambh-studio-safety/src/redteam/` module
+tree (no new crate, no new external dependency) + `aarambh-studio eval
+--redteam --redteam-report <path>` CLI flag. The pass runs without a trained
+model — the four boundaries are exercisable with stub executors and an
+in-memory key store, the same discipline every per-phase safety test already
+uses.
+
 > [!IMPORTANT]
 > This is a source and engineering project. It does not publish crates to
 > crates.io and does not ship pretrained checkpoints, adapters, GGUF files, or
@@ -177,6 +192,7 @@ See the phase-specific docs for full walkthroughs with smoke fixtures:
 | Model merging (linear/SLERP/TIES/DARE/task-arithmetic) | [docs/phase50_model_merging.md](docs/phase50_model_merging.md) |
 | Multi-tenant serve + prefix caching (Phase 51) | [docs/phase51_public_serve.md](docs/phase51_public_serve.md) |
 | System role, chat-template versioning, context policy (Phase 52) | [docs/phase52_system_role_context.md](docs/phase52_system_role_context.md) |
+| Red-team / adversarial safety evaluation (Phase 53) | [docs/phase53_redteam.md](docs/phase53_redteam.md) |
 | Sampling defaults reference | [docs/SAMPLING_DEFAULTS.md](docs/SAMPLING_DEFAULTS.md) |
 | Self-learning | [SELF_LEARNING_V3.md](SELF_LEARNING_V3.md) |
 
@@ -374,7 +390,7 @@ reproducible bugs and scoped feature requests. Report vulnerabilities through
   author  = {Aarambh Dev Hub},
   year    = {2026},
   url     = {https://github.com/AarambhDevHub/aarambh-studio},
-  version = {4.0.0-alpha.12},
+  version = {4.0.0-alpha.13},
   license = {Apache-2.0}
 }
 ```

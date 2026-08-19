@@ -9,6 +9,8 @@ pub mod input;
 pub mod output;
 /// Safety policy presets and actions.
 pub mod policy;
+/// Red-team / adversarial safety evaluation (Phase 53).
+pub mod redteam;
 /// Incremental token-safe output filtering.
 pub mod streaming;
 /// Safety verdict types.
@@ -24,5 +26,10 @@ pub use output::{
     score_toxicity,
 };
 pub use policy::{PiiPolicy, SafetyMode, SafetyPolicy, ViolationAction};
+pub use redteam::{
+    AdversarialCase, AdversarialInput, CaseOutcome, Corpus, ExpectedOutcome, ObservedOutcome,
+    REDTEAM_REPORT_SCHEMA_VERSION, RedTeamHarness, RedTeamReport, RedTeamSurface, RedTeamTarget,
+    SafetyLayerTarget,
+};
 pub use streaming::{SafeStreamEvent, StreamingSafetyFilter};
 pub use verdict::SafetyVerdict;
