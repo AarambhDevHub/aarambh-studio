@@ -1142,6 +1142,13 @@ git tag v4.0.0-alpha.10
 
 ## Phase 51 — Public/Hosted Inference Server + Prefix Caching
 
+> **Status: shipped in v4.0.0-alpha.11.** All three modules (`auth.rs`,
+> `prefix_cache.rs`, `tenant_isolation.rs`) are implemented, all five
+> acceptance tests pass by name, and the loopback-only unauthenticated
+> default from v2 §27 is preserved byte-for-byte when the new opt-in flags
+> are not set. See `docs/phase51_public_serve.md` for the runbook and
+> `CHANGELOG.md` `[4.0.0-alpha.11]` for the entry.
+
 **Duration:** 10–14 days | **Hardware:** Kaggle (free quota, for load testing)
 
 ### Goal
@@ -1162,19 +1169,19 @@ product.
 
 **`aarambh-studio-serve`:**
 ```
-[ ] src/auth.rs
+[x] src/auth.rs
       API key issuance/validation, replacing v2 §27's simple
       loopback-exemption/bearer-token model with real per-key identity
       Per-key rate limiting (requests/minute, tokens/minute), enforced
       at admission into the continuous batcher (v2 §27), not after
-[ ] src/prefix_cache.rs
+[x] src/prefix_cache.rs
       Prompt-prefix hashing, mapped to cached KV state so repeated
       system prompts / shared conversation prefixes across requests
       reuse computed KV state instead of recomputing it
       LRU eviction policy with a configurable memory ceiling
       Hit/miss metrics exposed via the existing /metrics endpoint
       (v2 §27)
-[ ] src/tenant_isolation.rs
+[x] src/tenant_isolation.rs
       Per-tenant resource ceilings within the bounded-admission
       continuous batcher (v2 §27) — one tenant's burst of requests
       cannot starve another tenant's already-admitted requests
@@ -1182,7 +1189,7 @@ product.
 
 **Documentation:**
 ```
-[ ] Explicit deployment guidance: this phase makes public exposure
+[x] Explicit deployment guidance: this phase makes public exposure
     *possible*, it does not make it a good default — the loopback-only,
     unauthenticated mode from v2 §27 remains the recommended default
     for local/single-user use

@@ -32,10 +32,15 @@ use crate::api::{
     CompletionChoice, CompletionRequest, CompletionResponse, ErrorBody, ErrorResponse,
     FunctionCallResponse, ModelList, ModelObject, ToolCallResponse, Usage,
 };
+use crate::auth::{
+    ApiKeyStore, AuthConfig, AuthGate, AuthOutcome, AuthRejection, RateLimit, RateLimiter, TenantId,
+};
 use crate::batching::{
     BatcherConfig, BatcherHandle, GenerationEvent, GenerationRequest, SubmitError,
 };
 use crate::metrics::ServerMetrics;
+use crate::prefix_cache::{KvFootprint, PrefixCache, PrefixCacheConfig};
+use crate::tenant_isolation::{TenantBusy, TenantIsolationConfig, TenantLimiter, TenantPermit};
 
 #[derive(Clone)]
 /// Complete local inference-server configuration.
@@ -50,8 +55,14 @@ pub struct ServeConfig {
     pub default_thinking: ThinkingMode,
     /// Optional server-wide safety policy.
     pub safety_policy: Option<SafetyPolicy>,
-    /// Optional bearer API key.
+    /// Optional bearer API key (single-key legacy mode).
     pub api_key: Option<String>,
+    /// Optional multi-tenant API-key file (Phase 51).
+    pub auth: Option<AuthConfig>,
+    /// Prompt-prefix cache configuration (Phase 51).
+    pub prefix_cache: PrefixCacheConfig,
+    /// Per-tenant concurrent-in-flight ceiling (Phase 51).
+    pub tenant_isolation: TenantIsolationConfig,
     /// Explicit CORS origins.
     pub cors_origins: Vec<String>,
     /// Optional server-provided function catalog used when a request omits tools.
@@ -69,6 +80,9 @@ impl Default for ServeConfig {
             default_thinking: ThinkingMode::None,
             safety_policy: Some(SafetyPolicy::strict()),
             api_key: None,
+            auth: None,
+            prefix_cache: PrefixCacheConfig::DISABLED,
+            tenant_isolation: TenantIsolationConfig::UNLIMITED,
             cors_origins: Vec::new(),
             default_tools: Vec::new(),
             batcher: BatcherConfig::default(),
@@ -87,9 +101,19 @@ impl ServeConfig {
                 "max request tokens must be greater than zero".into(),
             ));
         }
-        if !self.bind.ip().is_loopback() && self.api_key.as_deref().is_none_or(str::is_empty) {
+        let has_auth =
+            self.api_key.as_deref().is_some_and(|key| !key.is_empty()) || self.auth.is_some();
+        if !self.bind.ip().is_loopback() && !has_auth {
             return Err(AarambhError::Config(
-                "a bearer API key is required for non-loopback binds".into(),
+                "an API key or key file is required for non-loopback binds".into(),
+            ));
+        }
+        // Eagerly parse and validate the key file so a malformed file fails
+        // fast at startup rather than on the first request.
+        self.auth_store()?;
+        if self.tenant_isolation.is_bounded() && self.auth.is_none() {
+            return Err(AarambhError::Config(
+                "tenant isolation requires an API-key file (multi-tenant auth)".into(),
             ));
         }
         for origin in &self.cors_origins {
@@ -99,6 +123,15 @@ impl ServeConfig {
         }
         Ok(())
     }
+
+    /// Build the in-memory key store when multi-tenant auth is configured.
+    pub fn auth_store(&self) -> Result<Option<ApiKeyStore>, AarambhError> {
+        let Some(config) = self.auth.as_ref() else {
+            return Ok(None);
+        };
+        let store = ApiKeyStore::from_config(config)?;
+        Ok(Some(store))
+    }
 }
 
 #[derive(Clone)]
@@ -106,6 +139,9 @@ struct AppState {
     config: ServeConfig,
     batcher: BatcherHandle,
     metrics: Arc<ServerMetrics>,
+    auth_gate: Arc<AuthGate>,
+    rate_limiter: Arc<RateLimiter>,
+    tenant_limiter: Arc<TenantLimiter>,
     model_created: u64,
 }
 
@@ -114,11 +150,18 @@ pub fn build_router(
     config: ServeConfig,
     batcher: BatcherHandle,
     metrics_store: Arc<ServerMetrics>,
-) -> Router {
+) -> std::result::Result<Router, AarambhError> {
+    let store = config.auth_store()?;
+    let auth_gate = Arc::new(AuthGate::new(store));
+    let rate_limiter = Arc::new(RateLimiter::new());
+    let tenant_limiter = Arc::new(TenantLimiter::new(config.tenant_isolation));
     let state = AppState {
         config: config.clone(),
         batcher,
         metrics: metrics_store,
+        auth_gate,
+        rate_limiter,
+        tenant_limiter,
         model_created: unix_seconds(),
     };
     let mut router = Router::new()
@@ -150,7 +193,7 @@ pub fn build_router(
                 .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE]),
         );
     }
-    router
+    Ok(router)
 }
 
 /// Bind, serve requests, and shut down cleanly after SIGINT or SIGTERM.
@@ -159,14 +202,22 @@ pub async fn run_server(config: ServeConfig, engine: InferenceEngine) -> std::io
         .validate()
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
     let metrics = Arc::new(ServerMetrics::default());
-    let batcher = BatcherHandle::start(
+    let prefix_cache = if config.prefix_cache.is_enabled() {
+        let footprint = KvFootprint::from_model_config(engine.model_config(), 4);
+        Some(Arc::new(PrefixCache::new(config.prefix_cache, footprint)))
+    } else {
+        None
+    };
+    let batcher = BatcherHandle::start_with_prefix_cache(
         engine,
         config.batcher.clone(),
         config.safety_policy.clone(),
         metrics.clone(),
+        prefix_cache,
     )
     .map_err(std::io::Error::other)?;
-    let router = build_router(config.clone(), batcher.clone(), metrics);
+    let router =
+        build_router(config.clone(), batcher.clone(), metrics).map_err(std::io::Error::other)?;
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
     tracing::info!(address = %config.bind, model = %config.model_id, "inference server ready");
     let result = axum::serve(listener, router)
@@ -181,9 +232,13 @@ async fn chat_completions(
     headers: HeaderMap,
     payload: Result<Json<ChatCompletionRequest>, JsonRejection>,
 ) -> Response {
-    if let Err(error) = authorize(&headers, &state.config) {
-        return error.into_response();
-    }
+    let authorisation = match authorize(&headers, &state) {
+        Authorised::Ok { tenant, limits } => Some((tenant, limits)),
+        Authorised::Reject(failure) => {
+            state.metrics.auth_rejection();
+            return failure.into_response();
+        }
+    };
     let Json(request) = match payload {
         Ok(payload) => payload,
         Err(error) => return ApiFailure::json(error.body_text()).into_response(),
@@ -193,6 +248,10 @@ async fn chat_completions(
     let prepared = match prepare_chat_request(request, &state) {
         Ok(prepared) => prepared,
         Err(error) => return error.into_response(),
+    };
+    let permit = match admit_request(&state, authorisation, &prepared) {
+        Ok(permit) => permit,
+        Err(failure) => return failure.into_response(),
     };
     let receiver = match state.batcher.submit(prepared) {
         Ok(receiver) => receiver,
@@ -207,9 +266,11 @@ async fn chat_completions(
             created,
             state.config.model_id.clone(),
             include_usage,
+            permit,
         )
         .into_response()
     } else {
+        let _permit = permit; // hold the admission permit for the response lifetime
         match await_generation(receiver).await {
             GenerationResult::Completed(output) => Json(chat_response(
                 id,
@@ -234,9 +295,13 @@ async fn completions(
     headers: HeaderMap,
     payload: Result<Json<CompletionRequest>, JsonRejection>,
 ) -> Response {
-    if let Err(error) = authorize(&headers, &state.config) {
-        return error.into_response();
-    }
+    let authorisation = match authorize(&headers, &state) {
+        Authorised::Ok { tenant, limits } => Some((tenant, limits)),
+        Authorised::Reject(failure) => {
+            state.metrics.auth_rejection();
+            return failure.into_response();
+        }
+    };
     let Json(request) = match payload {
         Ok(payload) => payload,
         Err(error) => return ApiFailure::json(error.body_text()).into_response(),
@@ -246,6 +311,10 @@ async fn completions(
         Ok(prepared) => prepared,
         Err(error) => return error.into_response(),
     };
+    let permit = match admit_request(&state, authorisation, &prepared) {
+        Ok(permit) => permit,
+        Err(failure) => return failure.into_response(),
+    };
     let receiver = match state.batcher.submit(prepared) {
         Ok(receiver) => receiver,
         Err(error) => return submit_failure(error).into_response(),
@@ -253,8 +322,10 @@ async fn completions(
     let id = next_id("cmpl");
     let created = unix_seconds();
     if stream {
-        completion_stream(receiver, id, created, state.config.model_id.clone()).into_response()
+        completion_stream(receiver, id, created, state.config.model_id.clone(), permit)
+            .into_response()
     } else {
+        let _permit = permit; // hold the admission permit for the response lifetime
         match await_generation(receiver).await {
             GenerationResult::Completed(output) => Json(completion_response(
                 id,
@@ -283,8 +354,9 @@ async fn completions(
 }
 
 async fn models(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if let Err(error) = authorize(&headers, &state.config) {
-        return error.into_response();
+    if let Authorised::Reject(failure) = authorize(&headers, &state) {
+        state.metrics.auth_rejection();
+        return failure.into_response();
     }
     Json(ModelList {
         object: "list",
@@ -303,8 +375,9 @@ async fn health() -> impl IntoResponse {
 }
 
 async fn metrics(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if let Err(error) = authorize(&headers, &state.config) {
-        return error.into_response();
+    if let Authorised::Reject(failure) = authorize(&headers, &state) {
+        state.metrics.auth_rejection();
+        return failure.into_response();
     }
     Json(state.metrics.snapshot()).into_response()
 }
@@ -631,9 +704,13 @@ fn chat_stream(
     created: u64,
     model: String,
     include_usage: bool,
+    permit: TenantPermit,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let (tx, rx) = mpsc::channel(32);
     tokio::spawn(async move {
+        // Hold the admission permit for the streaming-response lifetime so the
+        // tenant's concurrency slot is released only when the stream ends.
+        let _permit = permit;
         let first = json!({"id": id, "object":"chat.completion.chunk", "created":created,
             "model":model, "choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null,"logprobs":null}]});
         let _ = tx.send(Ok(Event::default().data(first.to_string()))).await;
@@ -690,9 +767,12 @@ fn completion_stream(
     id: String,
     created: u64,
     model: String,
+    permit: TenantPermit,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let (tx, rx) = mpsc::channel(32);
     tokio::spawn(async move {
+        // Hold the admission permit for the streaming-response lifetime.
+        let _permit = permit;
         while let Some(event) = receiver.recv().await {
             let (text, finish) = match event {
                 GenerationEvent::Delta(text) => (text, None),
@@ -850,29 +930,94 @@ fn finish_reason(reason: FinishReason) -> &'static str {
     }
 }
 
-fn authorize(headers: &HeaderMap, config: &ServeConfig) -> Result<(), ApiFailure> {
-    let Some(expected) = config.api_key.as_deref() else {
-        return Ok(());
-    };
-    let supplied = headers
-        .get("authorization")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "));
-    if supplied.is_some_and(|supplied| constant_time_eq(supplied.as_bytes(), expected.as_bytes())) {
-        Ok(())
-    } else {
-        Err(ApiFailure::unauthorized())
+fn authorize(headers: &HeaderMap, state: &AppState) -> Authorised {
+    // Multi-tenant auth takes precedence when configured.
+    if !state.auth_gate.is_open() {
+        return match state.auth_gate.authorize(headers) {
+            AuthOutcome::Authenticated { key } => Authorised::Ok {
+                tenant: key.tenant.clone(),
+                limits: key.limits,
+            },
+            AuthOutcome::UnauthenticatedLocal => Authorised::Ok {
+                tenant: TenantId::local(),
+                limits: RateLimit::UNLIMITED,
+            },
+            AuthOutcome::Rejected(AuthRejection::MissingKey) => {
+                Authorised::Reject(ApiFailure::unauthorized_with("missing bearer API key"))
+            }
+            AuthOutcome::Rejected(AuthRejection::InvalidKey) => {
+                Authorised::Reject(ApiFailure::unauthorized_with("invalid bearer API key"))
+            }
+        };
+    }
+    // Legacy single-key auth path.
+    match state.config.api_key.as_deref() {
+        Some(expected) => {
+            let supplied = headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.strip_prefix("Bearer "))
+                .map(str::trim);
+            if supplied.is_some_and(|supplied| {
+                crate::auth::constant_time_eq(supplied.as_bytes(), expected.as_bytes())
+            }) {
+                Authorised::Ok {
+                    tenant: TenantId::local(),
+                    limits: RateLimit::UNLIMITED,
+                }
+            } else {
+                Authorised::Reject(ApiFailure::unauthorized())
+            }
+        }
+        None => Authorised::Ok {
+            tenant: TenantId::local(),
+            limits: RateLimit::UNLIMITED,
+        },
     }
 }
 
-fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
-    if left.len() != right.len() {
-        return false;
+/// Result of authorising one request.
+enum Authorised {
+    /// Request is authenticated as `tenant` with per-key `limits`.
+    Ok {
+        /// Resolved tenant id.
+        tenant: TenantId,
+        /// Per-key rate limits (UNLIMITED in loopback-open mode).
+        limits: RateLimit,
+    },
+    /// Request was rejected; the failure carries the HTTP response.
+    Reject(ApiFailure),
+}
+
+/// Estimate the prompt+completion token cost of a request for rate limiting.
+fn estimated_tokens(request: &GenerationRequest) -> usize {
+    // Honest about being an estimate: prompt chars / 4 (a common
+    // approximation) plus the requested max_new_tokens. The actual admitted
+    // token count is reported by the inference engine after generation.
+    let prompt_estimate = request.prompt.chars().count() / 4;
+    prompt_estimate + request.config.max_new_tokens
+}
+
+/// Run the per-tenant rate limiter and concurrency limiter before admission.
+fn admit_request(
+    state: &AppState,
+    authorisation: Option<(TenantId, RateLimit)>,
+    request: &GenerationRequest,
+) -> Result<TenantPermit, ApiFailure> {
+    let (tenant, limits) =
+        authorisation.unwrap_or_else(|| (TenantId::local(), RateLimit::UNLIMITED));
+    let tokens = estimated_tokens(request);
+    if !state.rate_limiter.check(&tenant, limits, tokens) {
+        state.metrics.rate_limited();
+        return Err(ApiFailure::rate_limited());
     }
-    left.iter()
-        .zip(right)
-        .fold(0u8, |difference, (left, right)| difference | (left ^ right))
-        == 0
+    match state.tenant_limiter.try_admit(&tenant) {
+        Ok(permit) => Ok(permit),
+        Err(TenantBusy) => {
+            state.metrics.tenant_throttled();
+            Err(ApiFailure::tenant_busy())
+        }
+    }
 }
 
 fn submit_failure(error: SubmitError) -> ApiFailure {
@@ -967,6 +1112,39 @@ impl ApiFailure {
             "authentication_error",
             "invalid_api_key",
             "missing or invalid bearer API key",
+            None,
+        )
+    }
+
+    /// Construct an authentication failure with a specific reason message.
+    fn unauthorized_with(message: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::UNAUTHORIZED,
+            "authentication_error",
+            "invalid_api_key",
+            message,
+            None,
+        )
+    }
+
+    /// Construct a per-key rate-limit failure.
+    fn rate_limited() -> Self {
+        Self::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limit_error",
+            "rate_limited",
+            "per-key rate limit exceeded",
+            None,
+        )
+    }
+
+    /// Construct a per-tenant concurrency-ceiling failure.
+    fn tenant_busy() -> Self {
+        Self::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limit_error",
+            "tenant_busy",
+            "tenant concurrent request ceiling reached",
             None,
         )
     }
@@ -1117,7 +1295,8 @@ mod tests {
             max_request_tokens: 8,
             ..ServeConfig::default()
         };
-        (build_router(config, batcher.clone(), metrics), batcher)
+        let router = build_router(config, batcher.clone(), metrics).expect("test router builds");
+        (router, batcher)
     }
 
     #[test]
@@ -1139,6 +1318,7 @@ mod tests {
 
     #[test]
     fn api_key_compare_checks_full_value() {
+        use crate::auth::constant_time_eq;
         assert!(constant_time_eq(b"secret", b"secret"));
         assert!(!constant_time_eq(b"secret", b"secrex"));
         assert!(!constant_time_eq(b"secret", b"short"));
@@ -1176,6 +1356,9 @@ mod tests {
             },
             batcher,
             metrics,
+            auth_gate: Arc::new(AuthGate::new(None)),
+            rate_limiter: Arc::new(RateLimiter::new()),
+            tenant_limiter: Arc::new(TenantLimiter::new(TenantIsolationConfig::UNLIMITED)),
             model_created: 0,
         }
     }

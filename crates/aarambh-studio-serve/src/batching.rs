@@ -14,6 +14,7 @@ use aarambh_studio_safety::{
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::metrics::ServerMetrics;
+use crate::prefix_cache::{PrefixCache, PrefixLookup};
 
 #[derive(Debug, Clone)]
 /// Runtime controls for continuous request scheduling.
@@ -88,6 +89,17 @@ impl BatcherHandle {
         safety_policy: Option<SafetyPolicy>,
         metrics: Arc<ServerMetrics>,
     ) -> Result<Self> {
+        Self::start_with_prefix_cache(engine, config, safety_policy, metrics, None)
+    }
+
+    /// Start a worker with an optional prompt-prefix cache for prefill reuse.
+    pub fn start_with_prefix_cache(
+        engine: InferenceEngine,
+        config: BatcherConfig,
+        safety_policy: Option<SafetyPolicy>,
+        metrics: Arc<ServerMetrics>,
+        prefix_cache: Option<Arc<PrefixCache>>,
+    ) -> Result<Self> {
         if config.max_batch_size == 0
             || config.queue_capacity == 0
             || config.prefill_chunk_size == 0
@@ -100,7 +112,16 @@ impl BatcherHandle {
         let worker_metrics = metrics.clone();
         let worker = thread::Builder::new()
             .name("aarambh-inference".to_string())
-            .spawn(move || run_worker(engine, receiver, config, safety_policy, worker_metrics))
+            .spawn(move || {
+                run_worker(
+                    engine,
+                    receiver,
+                    config,
+                    safety_policy,
+                    worker_metrics,
+                    prefix_cache,
+                )
+            })
             .map_err(AarambhError::Io)?;
         Ok(Self {
             sender,
@@ -317,6 +338,7 @@ fn run_worker(
     config: BatcherConfig,
     safety_policy: Option<SafetyPolicy>,
     metrics: Arc<ServerMetrics>,
+    prefix_cache: Option<Arc<PrefixCache>>,
 ) {
     let mut active = Vec::<ActiveRequest>::new();
     let mut shutting_down = false;
@@ -330,6 +352,7 @@ fn run_worker(
                     &metrics,
                     &mut active,
                     config.prefill_chunk_size,
+                    prefix_cache.as_ref(),
                 ),
                 Ok(Control::Shutdown) => shutting_down = true,
                 Err(mpsc::TryRecvError::Empty) => break,
@@ -352,6 +375,7 @@ fn run_worker(
                     &metrics,
                     &mut active,
                     config.prefill_chunk_size,
+                    prefix_cache.as_ref(),
                 ),
                 Ok(Control::Shutdown) => shutting_down = true,
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -467,12 +491,34 @@ fn admit_job(
     metrics: &ServerMetrics,
     active: &mut Vec<ActiveRequest>,
     prefill_chunk_size: usize,
+    prefix_cache: Option<&Arc<PrefixCache>>,
 ) {
     metrics.request_admitted();
-    match engine.prepare_session_with_chunk_size(
+    let lookup_metrics = metrics;
+    let lookup = |prompt_ids: &[u32]| -> Option<(aarambh_studio_inference::KvCache, usize)> {
+        let cache = prefix_cache?;
+        match cache.lookup(prompt_ids) {
+            PrefixLookup::Hit { cache, matched_len } => {
+                lookup_metrics.prefix_cache_hit(matched_len as u64);
+                Some((cache, matched_len))
+            }
+            PrefixLookup::Miss => {
+                lookup_metrics.prefix_cache_miss();
+                None
+            }
+        }
+    };
+    let store = |prompt_ids: &[u32], cache: &aarambh_studio_inference::KvCache| {
+        if let Some(store_cache) = prefix_cache {
+            store_cache.store(prompt_ids, cache);
+        }
+    };
+    match engine.prepare_session_with_prefix_cache(
         &job.request.prompt,
         job.request.config.clone(),
         prefill_chunk_size,
+        lookup,
+        store,
     ) {
         Ok(session) => active.push(ActiveRequest::new(job.request, session, job.tx, policy)),
         Err(error) => {

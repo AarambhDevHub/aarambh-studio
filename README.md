@@ -45,6 +45,14 @@ external dependency) that combines two or more compatible checkpoints
 into one via five standard algorithms: linear/Model-Soups, SLERP,
 task-vector arithmetic, TIES-Merging, and DARE.
 
+**v4.0.0-alpha.11** adds **public/hosted inference server + prefix caching
+(Phase 51)** — the existing `aarambh-studio-serve` server gains opt-in
+multi-tenant API-key auth, per-key rate limiting (RPM + TPM), per-tenant
+in-flight isolation, and prefix caching (longest-prefix KV reuse with LRU
+eviction under a configurable memory ceiling). All three are opt-in; the
+loopback-only, unauthenticated single-user mode from v2 §31 remains the
+default. Still self-hosted — no billing, no auto-scaling.
+
 > [!IMPORTANT]
 > This is a source and engineering project. It does not publish crates to
 > crates.io and does not ship pretrained checkpoints, adapters, GGUF files, or
@@ -66,6 +74,7 @@ task-vector arithmetic, TIES-Merging, and DARE.
 | Audio | Frozen audio spectrogram transformer, pure-Rust WAV decode + mel-spectrogram, `<audio>` token fusion, audio DoRA/QDoRA tuning (Phase 42) |
 | Runtime | CPU SIMD, Rayon attention, optional custom CUDA PTX kernels, Axum 0.8.9 HTTP/SSE server |
 | Guardrails | Prompt-injection checks, jailbreak checks, PII redaction, output scanning, streaming token safety, audit logs |
+| Serving (Phase 51) | Multi-tenant API-key auth, per-key RPM/TPM rate limits, per-tenant in-flight isolation, prompt-prefix KV caching (LRU, memory-ceiling) — all opt-in; loopback-only remains the default |
 | Self-learning | Opt-in critique, replay, verifier rewards, deferred CPU updates, CUDA vision mode, and post-commit forgetting probes |
 
 The implementation history and proof obligations for each feature live in the
@@ -156,6 +165,7 @@ See the phase-specific docs for full walkthroughs with smoke fixtures:
 | MLA hybrid attention & KV-cache report | `aarambh-studio eval --kv-cache-report` + [docs/phase41_mla.md](docs/phase41_mla.md) |
 | Fine-tuning (SFT, adapters, GRPO, DPO) | `aarambh-studio finetune --help` |
 | Model merging (linear/SLERP/TIES/DARE/task-arithmetic) | [docs/phase50_model_merging.md](docs/phase50_model_merging.md) |
+| Multi-tenant serve + prefix caching (Phase 51) | [docs/phase51_public_serve.md](docs/phase51_public_serve.md) |
 | Self-learning | [SELF_LEARNING_V3.md](SELF_LEARNING_V3.md) |
 
 ```sh
@@ -326,7 +336,14 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
   self-learning loop (the same framing RLAIF uses).
 - Video is visual-only H.264 MP4; audio is WAV PCM only (no MP3/FLAC/Ogg).
 - Documents are pixel-based (no OCR/table parser).
-- The server is local/single-model; vision, audio, and self-learning are CLI workflows.
+- The server is local/single-model by default; vision, audio, and
+  self-learning are CLI workflows. Phase 51 (`v4.0.0-alpha.11`) adds opt-in
+  multi-tenant API-key auth, per-key rate limits, per-tenant in-flight
+  isolation, and prompt-prefix KV caching to `aarambh-studio-serve` — but
+  this makes public multi-tenant self-hosting *possible*, not a hosted
+  product. There is no billing system and no horizontal auto-scaling. The
+  loopback-only, unauthenticated mode remains the recommended default for
+  single-user, local use.
 
 Full exclusions in the [versioned roadmaps](#documentation).
 
@@ -340,12 +357,12 @@ reproducible bugs and scoped feature requests. Report vulnerabilities through
 ## Citation
 
 ```bibtex
-@software{aarambh_ai_2026,
+@software{aarambh_studio_2026,
   title   = {aarambh-studio: A Ground-Up Language Model System in Rust},
   author  = {Aarambh Dev Hub},
   year    = {2026},
   url     = {https://github.com/AarambhDevHub/aarambh-studio},
-  version = {4.0.0-alpha.10},
+  version = {4.0.0-alpha.11},
   license = {Apache-2.0}
 }
 ```

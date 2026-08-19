@@ -1,0 +1,20 @@
+{
+  "keys": [
+    {
+      "secret": "replace-with-a-long-random-secret-for-tenant-a",
+      "tenant": "tenant-a",
+      "limits": {
+        "requests_per_minute": 60,
+        "tokens_per_minute": 10000
+      }
+    },
+    {
+      "secret": "replace-with-a-different-long-random-secret-for-tenant-b",
+      "tenant": "tenant-b",
+      "limits": {
+        "requests_per_minute": 120,
+        "tokens_per_minute": 50000
+      }
+    }
+  ]
+}

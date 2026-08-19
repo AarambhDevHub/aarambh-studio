@@ -1,0 +1,12 @@
+{
+  "phase": 51,
+  "version": "4.0.0-alpha.11",
+  "serve_tests": "passed (31 lib + 5 auth + 6 prefix_cache + 3 tenant_isolation = 45, 0 failed)",
+  "serve_help_flags": "passed (5/5 new flags present)",
+  "example_key_file": "parsed",
+  "release_audit": "passed (21 packages, 1 version, 0 publish, 0 TODO/FIXME, 0 unchecked [ ], 0 artifacts)",
+  "fmt": "clean",
+  "clippy": "clean",
+  "doc": "clean",
+  "inference_tests": "passed (75 tests, 0 failed)"
+}

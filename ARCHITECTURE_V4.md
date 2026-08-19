@@ -1169,6 +1169,63 @@ auto-scaling. The loopback-only, unauthenticated local mode from v2
 §31 remains the documented default for single-user, local use — §65
 adds a capability, it does not change the recommended starting point.
 
+### Implementation (Phase 51, v4.0.0-alpha.11)
+
+Phase 51 extends the existing `aarambh-studio-serve` crate (no new
+crate; `EXPECTED_PACKAGES` stays 21) with three new modules and one
+strictly-additive method on the inference engine:
+
+- **`src/auth.rs`** — `TenantId`, `ApiKey`/`KeyEntry`/`AuthConfig`
+  (JSON key file), `ApiKeyStore` (constant-time `validate`), `AuthGate`
+  resolving an `Authorization: Bearer <secret>` header to a tenant or a
+  typed rejection, and `RateLimiter` (per-tenant, per-key sliding
+  60-second window over RPM + TPM). When no key file is configured the
+  gate runs in loopback-open mode and every request maps to the
+  synthetic `local` tenant with `RateLimit::UNLIMITED` — byte-for-byte
+  the v2 §31 default.
+- **`src/prefix_cache.rs`** — `KvFootprint` (honest per-token KV byte
+  estimate from the model config), `PrefixCacheConfig` (byte + entry
+  ceilings, `DISABLED` by default), `PrefixCache` with longest-prefix
+  token-id matching, SHA-256 key hashing with token-id verification on
+  collision, and LRU eviction under the configured memory ceiling.
+  Lookups cap the matched length at `prompt_len - 1` so at least one
+  prompt token remains to prefill.
+- **`src/tenant_isolation.rs`** — `TenantIsolationConfig`
+  (`max_concurrent_per_tenant`, `UNLIMITED` by default),
+  `TenantLimiter` with one lazy `tokio::sync::Semaphore` per tenant,
+  and a RAII `TenantPermit` held for the entire response lifetime
+  (moved into the spawned SSE consumer task for streaming; dropped
+  after `await_generation` for non-streaming). Enforced at the HTTP
+  admission layer, never inside the inference worker.
+- **`aarambh-studio-inference`** — one new public method,
+  `InferenceEngine::prepare_session_with_prefix_cache(prompt, config,
+  chunk_size, lookup, store)`. The existing
+  `prepare_session_with_chunk_size` delegates to it with no-op
+  closures, so every existing caller is unchanged.
+
+### Hard guarantees (Phase 51)
+
+1. **Auth before admission** — a missing/invalid key is rejected before
+   the request is submitted to the continuous batcher (401, never
+   queued).
+2. **Per-key rate limiting** — RPM + TPM are enforced independently
+   per key at admission (429 on breach).
+3. **Prefix-cache correctness** — a hit restores the cached KV and
+   prefills only the remaining tokens; the resulting KV is identical to
+   a fresh full prefill, so generated output is byte-identical under
+   greedy decoding (the test suite asserts this).
+4. **Measured saving** — a hit's skipped prefill tokens are counted in
+   `prefix_cache_prefill_tokens_saved`, not assumed.
+5. **Memory ceiling + LRU** — the cache evicts least-recently-used
+   entries to stay under both the byte and entry ceilings.
+6. **Tenant isolation at admission** — one tenant's burst is rejected
+   (429 `tenant_busy`) while another tenant's request proceeds
+   normally.
+7. **Backward compatibility** — with auth off, prefix cache disabled,
+   and unlimited tenants (the defaults), the server is byte-for-byte
+   the v2 §31 single-user server; every pre-existing serve test
+   continues to pass unchanged.
+
 ---
 
 ## 66. System Role, Chat-Template Versioning, and Context Management

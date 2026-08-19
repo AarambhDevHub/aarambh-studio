@@ -258,6 +258,11 @@ impl InferenceEngine {
         &self.device
     }
 
+    /// Return the model configuration backing this engine.
+    pub fn model_config(&self) -> &aarambh_studio_core::ModelConfig {
+        self.model.config()
+    }
+
     /// Prepare a resumable text-generation session and prefill its KV cache.
     pub fn prepare_session(
         &self,
@@ -274,6 +279,32 @@ impl InferenceEngine {
         config: GenerationConfig,
         chunk_size: usize,
     ) -> Result<GenerationSession> {
+        self.prepare_session_with_prefix_cache(prompt, config, chunk_size, |_| None, |_, _| {})
+    }
+
+    /// Prepare a session, reusing a cached prefix KV when the lookup closure
+    /// returns one.
+    ///
+    /// `lookup` is invoked with the encoded prompt token ids and may return a
+    /// previously stored [`KvCache`] plus the matched prefix length. The
+    /// matched length is capped at `prompt_ids.len() - 1` so at least one
+    /// token remains to prefill. On a hit, the restored cache is truncated to
+    /// the matched length and only `prompt_ids[matched_len..]` is prefilled.
+    /// On a miss, a fresh cache is prefilled from token 0. After prefill,
+    /// `store` is always invoked with the prompt ids and the prefilled cache
+    /// (the caller is responsible for any caching policy).
+    pub fn prepare_session_with_prefix_cache<L, S>(
+        &self,
+        prompt: &str,
+        config: GenerationConfig,
+        chunk_size: usize,
+        lookup: L,
+        store: S,
+    ) -> Result<GenerationSession>
+    where
+        L: FnOnce(&[u32]) -> Option<(KvCache, usize)>,
+        S: FnOnce(&[u32], &KvCache),
+    {
         if chunk_size == 0 {
             return Err(AarambhError::Config(
                 "prefill chunk size must be greater than zero".into(),
@@ -295,19 +326,61 @@ impl InferenceEngine {
         let available = max_seq_len - prompt_ids.len();
         let max_new_tokens = config.max_new_tokens.min(available);
         let capacity = prompt_ids.len() + max_new_tokens;
-        let mut cache = KvCache::for_model_with_capacity(&self.model, capacity);
-        let mut next_logits = None;
-        for (chunk_index, chunk) in prompt_ids.chunks(chunk_size).enumerate() {
-            let offset = chunk_index * chunk_size;
-            let input = Tensor::from_vec(chunk.to_vec(), (1, chunk.len()), &self.device)?;
-            let logits = self
-                .model
-                .forward_with_cache(&input, offset, cache.layers_mut())?;
-            next_logits = Some(last_logits(&logits)?);
-        }
+        let (cache, _prefilled_len, next_logits) = match lookup(&prompt_ids) {
+            Some((mut cached, matched_len)) => {
+                let cap = prompt_ids.len().saturating_sub(1);
+                let matched_len = matched_len.min(cap);
+                cached.truncate(matched_len)?;
+                let next_logits = if matched_len == prompt_ids.len() {
+                    // Pure prefix hit: nothing new to prefill, so rerun the
+                    // last token id to recover the next-token logits (the KV
+                    // cache for that token is already in place).
+                    let last = prompt_ids[matched_len - 1];
+                    let input = Tensor::from_vec(vec![last], (1, 1), &self.device)?;
+                    let logits = self.model.forward_with_cache(
+                        &input,
+                        matched_len - 1,
+                        cached.layers_mut(),
+                    )?;
+                    last_logits(&logits)?
+                } else {
+                    let mut tail_logits: Option<Tensor> = None;
+                    let mut offset = matched_len;
+                    for chunk in prompt_ids[matched_len..].chunks(chunk_size) {
+                        let input =
+                            Tensor::from_vec(chunk.to_vec(), (1, chunk.len()), &self.device)?;
+                        let logits =
+                            self.model
+                                .forward_with_cache(&input, offset, cached.layers_mut())?;
+                        tail_logits = Some(last_logits(&logits)?);
+                        offset += chunk.len();
+                    }
+                    tail_logits.expect("non-empty prompt tail must be prefilled")
+                };
+                (cached, matched_len, next_logits)
+            }
+            None => {
+                let mut fresh = KvCache::for_model_with_capacity(&self.model, capacity);
+                let mut tail_logits: Option<Tensor> = None;
+                for (chunk_index, chunk) in prompt_ids.chunks(chunk_size).enumerate() {
+                    let offset = chunk_index * chunk_size;
+                    let input = Tensor::from_vec(chunk.to_vec(), (1, chunk.len()), &self.device)?;
+                    let logits =
+                        self.model
+                            .forward_with_cache(&input, offset, fresh.layers_mut())?;
+                    tail_logits = Some(last_logits(&logits)?);
+                }
+                (
+                    fresh,
+                    0,
+                    tail_logits.expect("prompt ids are guaranteed non-empty"),
+                )
+            }
+        };
+        store(&prompt_ids, &cache);
         GenerationSession::new(
             cache,
-            next_logits.expect("prompt ids are guaranteed non-empty"),
+            next_logits,
             prompt_ids.len(),
             max_new_tokens,
             available,
@@ -813,6 +886,15 @@ impl GenerationSession {
             config,
             tokenizer,
         )
+    }
+
+    /// Snapshot the session's current KV cache for prefix-cache storage.
+    ///
+    /// The returned [`KvCache`] is a clone of the session's prefilled state
+    /// (excluding any tokens generated after prefill). Callers should only
+    /// invoke this on an untouched prefilled session.
+    pub fn snapshot_prefix_cache(&self) -> KvCache {
+        self.cache.snapshot()
     }
 
     /// Sample and commit the next token from this session's current logits.
