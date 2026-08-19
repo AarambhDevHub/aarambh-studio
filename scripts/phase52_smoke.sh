@@ -14,7 +14,7 @@
 #     + version round-trip, serve system-role mapping, agent Reject + policy
 #     mapping, safety two-halves defense).
 #   - The CLI surfaces the new `infer --system` flag.
-#   - The canonical v4 special-token table includes the ` IMS` system marker at
+#   - The canonical v4 special-token table includes the `<|system|>` system marker at
 #     id 17 and the chat-template version constant is 4.
 set -euo pipefail
 

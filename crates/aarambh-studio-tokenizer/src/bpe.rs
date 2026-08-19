@@ -239,7 +239,7 @@ impl BpeTokenizer {
     /// Verify that Phase 52 system tokens and all earlier special tokens use required ids.
     ///
     /// This is the canonical v4.0 special-token table: the Phase 42 audio table
-    /// plus the ` IMS` system-role marker at id 17.
+    /// plus the `<|system|>` system-role marker at id 17.
     pub fn validate_system_special_tokens(&self) -> Result<()> {
         for (token, id) in special::SYSTEM_SPECIAL_TOKENS {
             self.validate_special_token(token, id)?;
@@ -406,7 +406,7 @@ impl BpeTokenizer {
 
     /// Return an audio-capable tokenizer upgraded to the Phase 52 system layout.
     ///
-    /// The single ` IMS` system-role marker is appended at id 17, immediately
+    /// The single `<|system|>` system-role marker is appended at id 17, immediately
     /// after the Phase 42 audio tokens (ids 0..=16). Existing learned token ids
     /// beginning at 17 are shifted by one. Callers must apply the same row
     /// migration to the model embedding and an untied language-model head, and
@@ -777,10 +777,10 @@ mod tests {
 
     #[test]
     fn audio_tokenizer_bpe_splits_system_marker_when_absent() {
-        // A Phase 42 audio tokenizer (no ` IMS` at id 17) must BPE-split the
-        // literal system marker string rather than emit a phantom id 17.
+        // A Phase 42 audio tokenizer (no `<|system|>` at id 17) must BPE-split
+        // the literal system marker string rather than emit a phantom id 17.
         let tokenizer = audio_tokenizer();
-        let ids = tokenizer.encode(" IMS").unwrap();
+        let ids = tokenizer.encode("<|system|>").unwrap();
         assert!(!ids.contains(&special::SYSTEM_ID));
     }
 
@@ -788,7 +788,7 @@ mod tests {
     fn upgraded_for_system_shifts_learned_tokens_by_one() {
         // An audio tokenizer with a learned token at id 17 migrates to a
         // system tokenizer where the learned token moves to id 18 and
-        // ` IMS` takes id 17.
+        // `<|system|>` takes id 17.
         let audio = audio_tokenizer();
         assert_eq!(audio.vocab.get_id("hello"), Some(17));
         let upgraded = audio.upgraded_for_system().unwrap();

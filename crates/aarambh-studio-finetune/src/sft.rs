@@ -57,13 +57,13 @@ impl ChatTemplate {
 
     /// Format the prompt prefix with a leading operator-set system turn (Phase 52).
     ///
-    /// Produces ` IMS\n{system}\n IMS\n{instruction}[\n{input}]\n IMS\n`. The
+    /// Produces `<|system|>\n{system}\n<|user|>\n{instruction}[\n{input}]\n<|assistant|>\n`. The
     /// system turn is optional and single-use: a caller that has no system
     /// instructions uses [`prefix`](Self::prefix) instead, which reproduces the
-    /// v1.0.0 ` IMS... IMS` format exactly.
+    /// v1.0.0 `<|user|>...<|assistant|>` format exactly.
     ///
     /// The existing loss-mask rule ([`build_loss_mask`]) masks every position
-    /// before the ` IMS` token, so a leading system turn is excluded from the
+    /// before the `<|assistant|>` token, so a leading system turn is excluded from the
     /// loss by construction — no training-code change is needed, only this
     /// documented prefix.
     pub fn prefix_with_system(
@@ -509,7 +509,7 @@ mod tests {
     fn sft_loss_mask_correctly_covers_a_leading_system_turn() {
         // Phase 52: a leading operator-set system turn must be excluded from the
         // SFT loss. `build_loss_mask` masks every position before the assistant
-        // (` IMS`) position, so a system turn placed before the user turn is
+        // (`<|assistant|>`) position, so a system turn placed before the user turn is
         // covered by construction — this test pins that invariant.
         let tokenizer = test_tokenizer();
         let template = ChatTemplate;

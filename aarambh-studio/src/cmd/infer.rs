@@ -296,7 +296,7 @@ pub fn run(args: InferArgs) -> anyhow::Result<()> {
         prompt_for_mode(&args.prompt, thinking_mode)
     };
     // Phase 52: an optional operator-set system turn is prepended as a single
-    // leading ` IMS` turn. Omitting it reproduces the v1.0.0 prompt format
+    // leading `<|system|>` turn. Omitting it reproduces the v1.0.0 prompt format
     // exactly; the system turn is purely additive.
     let prompt = args
         .system

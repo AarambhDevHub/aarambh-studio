@@ -35,11 +35,11 @@ pub enum ContextTruncationPolicy {
 /// The role of a single conversational turn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnRole {
-    /// Operator- or application-set system turn (` IMS`).
+    /// Operator- or application-set system turn (`<|system|>`).
     System,
-    /// User-authored turn (` IMS`).
+    /// User-authored turn (`<|user|>`).
     User,
-    /// Model-produced turn (` IMS`).
+    /// Model-produced turn (`<|assistant|>`).
     Assistant,
 }
 

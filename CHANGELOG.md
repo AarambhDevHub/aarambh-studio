@@ -87,7 +87,7 @@
   a formalization / retrofit pass on the model's I/O contract as it stands
   after every feature phase in v1–v4 — not a new capability, a documentation
   and versioning pass on what was under-specified.
-  - **System role (` IMS`):** the system-role marker is reserved at **id 17**
+  - **System role (`<|system|>`):** the system-role marker is reserved at **id 17**
     (the next free id after `AUDIO_END`), with a documented role: one
     optional, single-use, leading turn carrying operator-set instructions.
     Omitting it reproduces every prior version's prompt format exactly. The
@@ -107,7 +107,7 @@
     (`detect_injection`, since v1) is documented as such; the system-turn-side
     half is the structural rule that the serve layer's `assemble_chat_prompt`
     creates system turns exclusively from `role == "system" | "developer"`
-    messages — a user message can only ever occupy the ` IMS` position.
+    messages — a user message can only ever occupy the `<|user|>` position.
   - **Context-truncation policy:** `ContextTruncationPolicy { SlidingWindow,
     Summarize, Reject }` in new `aarambh-studio-inference/src/context_policy.rs`
     — one canonical policy referenced by every long-context feature. The agent
