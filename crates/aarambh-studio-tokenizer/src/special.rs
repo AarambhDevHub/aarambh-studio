@@ -34,13 +34,13 @@ pub const AUDIO: &str = "<audio>";
 pub const AUDIO_END: &str = "<audio_end>";
 /// System role marker token string (Phase 52).
 ///
-/// ` IMS` is the first-class, optional system-turn marker formalized in
+/// `<|system|>` is the first-class, optional system-turn marker formalized in
 /// Phase 52 (`ARCHITECTURE_V4.md` §66). A session may include at most one
-/// ` IMS` turn, placed before any ` IMS` (user) turn, carrying operator-
+/// `<|system|>` turn, placed before any `<|user|>` turn, carrying operator-
 /// or application-set instructions. Omitting it entirely reproduces every
-/// prior version's ` IMS... IMS` format exactly — the system role is
-/// purely additive.
-pub const SYSTEM: &str = " IMS";
+/// prior version's `<|user|>...<|assistant|>` format exactly — the system
+/// role is purely additive.
+pub const SYSTEM: &str = "<|system|>";
 
 /// End-of-text token id.
 pub const ENDOFTEXT_ID: u32 = 0;
@@ -127,7 +127,7 @@ pub const AUDIO_SPECIAL_TOKENS: [(&str, u32); 17] = [
 /// System-capable reserved token table accepted by v4.0 (Phase 52) checkpoints.
 ///
 /// This is the canonical v4.0 special-token table: the Phase 42 audio table
-/// plus the ` IMS` system-role marker at id 17. It is a strict superset of
+/// plus the `<|system|>` system-role marker at id 17. It is a strict superset of
 /// [`AUDIO_SPECIAL_TOKENS`] — every audio-table pair appears, in order, at the
 /// front, with the single new system marker appended.
 pub const SYSTEM_SPECIAL_TOKENS: [(&str, u32); 18] = [
@@ -201,10 +201,10 @@ pub const SPECIAL_TOKEN_COUNT: usize = SPECIAL_TOKENS.len();
 ///
 /// | version | template shape                                              |
 /// |---------|-------------------------------------------------------------|
-/// | `1`     | v1.0.0 base ` IMS`/` IMS` chat format                       |
+/// | `1`     | v1.0.0 base `<|user|>`/`<|assistant|>` chat format        |
 /// | `2`     | v2.0.0 + image tokens                                       |
 /// | `3`     | v3.0.0 + video / document / tool tokens                     |
-/// | `4`     | v4.0.0 + system role formalized (` IMS`) + audio tokens     |
+/// | `4`     | v4.0.0 + system role formalized (`<|system|>`) + audio tokens |
 pub const CURRENT_CHAT_TEMPLATE_VERSION: u32 = 4;
 
 /// Validate a checkpoint's declared chat-template version against an expected one.

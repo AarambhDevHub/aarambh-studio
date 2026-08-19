@@ -1229,7 +1229,7 @@ git tag v4.0.0-alpha.11
 
 ## Phase 52 — System Role, Chat-Template Versioning, and Context Management
 
-> **Status: shipped in v4.0.0-alpha.12.** The ` IMS` system-role marker is
+> **Status: shipped in v4.0.0-alpha.12.** The `<|system|>` system-role marker is
 > reserved at **id 17** (not id 7 — id 7 is `IMAGE` since v2 and is never
 > reassigned; the system marker takes the next free id, following the project's
 > append-never-reassign discipline). All six roadmap acceptance tests pass. See

@@ -6,11 +6,11 @@
 //! - **User-input side (this module):** [`detect_injection`] flags patterns
 //!   like `"new system prompt:"`, `"ignore previous instructions"`, and
 //!   `"role":"system"` fragments inside user-supplied text. This has existed
-//!   since v1 and treats everything in the ` IMS` (user) turn as untrusted.
+//!   since v1 and treats everything in the `<|user|>` turn as untrusted.
 //! - **System-turn side (enforced structurally at prompt assembly):** system-
 //!   turn content is always operator- or application-supplied — it is never
 //!   derived from user input. A user message can only ever occupy the
-//!   ` IMS` position, never the ` IMS` position. The serve layer's
+//!   `<|user|>` position, never the `<|system|>` position. The serve layer's
 //!   `assemble_chat_prompt` is the only place system turns are created, and
 //!   it creates them exclusively from `role == "system" | "developer"`
 //!   messages.
@@ -166,7 +166,7 @@ mod tests {
         // user-input-side half — it must flag injection-style text wherever it
         // appears in user-supplied content. The system-turn-side half is the
         // structural rule (enforced in the serve layer) that user content can
-        // never populate the ` IMS` position in the first place.
+        // never populate the `<|user|>` position in the first place.
         //
         // A user message that attempts to install a new system prompt must be
         // detected here regardless of phrasing.

@@ -55,7 +55,7 @@ default. Still self-hosted — no billing, no auto-scaling.
 
 **v4.0.0-alpha.12** adds **system role, chat-template versioning, and context
 management (Phase 52)** — a formalization / retrofit pass on the model's I/O
-contract: a documented, first-class system role (` IMS` at id 17, the next
+contract: a documented, first-class system role (`<|system|>` at id 17, the next
 free id — id 7 is `IMAGE` since v2 and is never reassigned), a
 `chat_template_version` tag on tokenizer config and checkpoint metadata with a
 fail-loud startup mismatch gate, a unified `ContextTruncationPolicy`

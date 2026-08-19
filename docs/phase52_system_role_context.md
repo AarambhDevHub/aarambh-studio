@@ -17,7 +17,7 @@ were still under-specified:
 
 This phase closes all three, plus consolidates sampling-defaults guidance.
 
-## 1. System role — ` IMS` at id 17
+## 1. System role — `<|system|>` at id 17
 
 ### The id-7 inconsistency (and the resolution)
 
@@ -31,7 +31,7 @@ Reassigning id 7 from `IMAGE` to `system` would break every v2/v3/v4 vision,
 video, document, and audio checkpoint catastrophically. The project's invariant
 since v2 is **append new special tokens, never reassign an existing id**.
 
-**Resolution:** the system role marker ` IMS` is reserved at **id 17**, the
+**Resolution:** the system role marker `<|system|>` is reserved at **id 17**, the
 next free id immediately after `AUDIO_END` (16). This:
 
 - does not change a single existing token id (satisfying "without changing a
@@ -46,15 +46,15 @@ tokens, ids 0–17), a strict superset of the Phase 42 `AUDIO_SPECIAL_TOKENS`.
 ### Documented role
 
 ```
- IMS\n{operator-set instructions}\n IMS\n{user turn}\n IMS\n...
+<|system|>\n{operator-set instructions}\n<|user|>\n{user turn}\n<|assistant|>\n...
 ```
 
 - **Optional, single-use, leading position.** A session may include at most one
-  ` IMS` turn, placed before any ` IMS` (user) turn. Omitting it entirely
-  reproduces every prior version's ` IMS... IMS` format exactly — purely
+  `<|system|>` turn, placed before any `<|user|>` (user) turn. Omitting it entirely
+  reproduces every prior version's `<|user|>...<|assistant|>` format exactly — purely
   additive.
 - **Loss masking.** `SftTrainer`'s existing rule (`build_loss_mask` masks every
-  position before the ` IMS` position) already covers a leading system turn by
+  position before the `<|assistant|>` position) already covers a leading system turn by
   construction — no training-code change was needed, only the documented
   `ChatTemplate::prefix_with_system()` prefix and the test
   `sft_loss_mask_correctly_covers_a_leading_system_turn`.
@@ -62,7 +62,7 @@ tokens, ids 0–17), a strict superset of the Phase 42 `AUDIO_SPECIAL_TOKENS`.
   application-supplied. The serve layer's `assemble_chat_prompt` is the only
   place system turns are created, and it creates them exclusively from
   `role == "system" | "developer"` messages — a user message can only ever
-  occupy the ` IMS` position. See §3.
+  occupy the `<|user|>` position. See §3.
 
 ## 2. Chat-template versioning
 
@@ -80,10 +80,10 @@ history:
 
 | version | template shape |
 |---|---|
-| `1` | v1.0.0 base ` IMS`/` IMS` chat format |
+| `1` | v1.0.0 base `<|user|>`/`<|assistant|>` chat format |
 | `2` | v2.0.0 + image tokens |
 | `3` | v3.0.0 + video / document / tool tokens |
-| `4` | v4.0.0 + system role formalized (` IMS`) + audio tokens |
+| `4` | v4.0.0 + system role formalized (`<|system|>`) + audio tokens |
 
 `CURRENT_CHAT_TEMPLATE_VERSION = 4`.
 
@@ -109,12 +109,12 @@ The defense against a user masquerading as the system has two halves
 - **User-input side** (`detect_injection`, since v1): flags patterns like
   `"new system prompt:"`, `"ignore previous instructions"`, and
   `"role":"system"` fragments inside user-supplied text. Everything in the
-  ` IMS` (user) turn is treated as untrusted.
+  `<|user|>` (user) turn is treated as untrusted.
 - **System-turn side** (Phase 52, structural): system-turn content is always
   operator-supplied — never derived from user input. The serve layer's
   `assemble_chat_prompt` creates system turns exclusively from
   `role == "system" | "developer"` messages, so a user message can only ever
-  occupy the ` IMS` position.
+  occupy the `<|user|>` position.
 
 Neither half alone is sufficient: the user-side detector could miss a novel
 phrasing, and the system-side structural rule says nothing about *what* an
