@@ -2,6 +2,41 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0-alpha.11] - 2026-08-18
+
+### Added
+
+- **Phase 51 — Public/Hosted Inference Server + Prefix Caching:** the
+  existing `aarambh-studio-serve` server gains opt-in multi-tenant
+  API-key auth, per-key rate limiting (RPM + TPM), per-tenant in-flight
+  isolation, and prefix caching (longest-prefix KV reuse with LRU
+  eviction under a configurable memory ceiling). All three are opt-in;
+  the loopback-only, unauthenticated single-user mode from v2 §31
+  remains the default. Still self-hosted — no billing, no auto-scaling.
+  - Three new modules in the existing `aarambh-studio-serve` crate (no
+    new crate, no new external dependency; `EXPECTED_PACKAGES` stays 21):
+    `src/auth.rs` (per-key identity + rate limiting), `src/prefix_cache.rs`
+    (prompt-prefix → cached KV with LRU), `src/tenant_isolation.rs`
+    (per-tenant concurrent-in-flight ceiling).
+  - One strictly-additive method on `InferenceEngine`:
+    `prepare_session_with_prefix_cache(prompt, config, chunk_size, lookup,
+    store)`. The existing `prepare_session_with_chunk_size` delegates to
+    it with no-op closures, so every existing caller is unchanged.
+  - **CLI:** `aarambh-studio serve` gains five opt-in flags: `--api-keys
+    <path>`, `--prefix-cache`, `--prefix-cache-max-bytes <n>`,
+    `--prefix-cache-max-entries <n>`, `--max-concurrent-per-tenant <n>`.
+  - **Tests:** five roadmap-named acceptance tests pass by name, plus
+    supporting tests — all against a tiny in-memory `InferenceEngine`.
+  - **Docs:** `docs/phase51_public_serve.md` is the runbook;
+    `ARCHITECTURE_V4.md` §65 gets an Implementation subsection and Hard
+    guarantees list; `docs/inference-server.md` gains a multi-tenant
+    auth + prefix-caching section.
+
+### Changed
+
+- Bumped workspace version from `4.0.0-alpha.10` to `4.0.0-alpha.11`.
+  `Cargo.lock` updated to match.
+
 ## [4.0.0-alpha.10] - 2026-08-18
 
 ### Added

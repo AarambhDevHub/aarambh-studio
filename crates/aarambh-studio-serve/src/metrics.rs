@@ -16,6 +16,13 @@ pub struct ServerMetrics {
     decode_batches: AtomicU64,
     batch_items: AtomicU64,
     inference_errors: AtomicU64,
+    auth_rejections: AtomicU64,
+    rate_limited: AtomicU64,
+    tenant_throttled: AtomicU64,
+    prefix_cache_hits: AtomicU64,
+    prefix_cache_misses: AtomicU64,
+    prefix_cache_evictions: AtomicU64,
+    prefix_cache_prefill_tokens_saved: AtomicU64,
 }
 
 impl ServerMetrics {
@@ -65,6 +72,38 @@ impl ServerMetrics {
         self.inference_errors.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Record an authentication rejection (missing or invalid bearer key).
+    pub fn auth_rejection(&self) {
+        self.auth_rejections.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a request that was rejected by the per-key rate limiter.
+    pub fn rate_limited(&self) {
+        self.rate_limited.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a request rejected because the tenant was at its concurrency ceiling.
+    pub fn tenant_throttled(&self) {
+        self.tenant_throttled.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a prefix-cache hit and the number of prefill tokens it saved.
+    pub fn prefix_cache_hit(&self, tokens_saved: u64) {
+        self.prefix_cache_hits.fetch_add(1, Ordering::Relaxed);
+        self.prefix_cache_prefill_tokens_saved
+            .fetch_add(tokens_saved, Ordering::Relaxed);
+    }
+
+    /// Record a prefix-cache miss.
+    pub fn prefix_cache_miss(&self) {
+        self.prefix_cache_misses.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a prefix-cache LRU eviction.
+    pub fn prefix_cache_eviction(&self) {
+        self.prefix_cache_evictions.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// Capture all counters as a serializable value.
     pub fn snapshot(&self) -> MetricsSnapshot {
         let decode_batches = self.decode_batches.load(Ordering::Relaxed);
@@ -85,6 +124,15 @@ impl ServerMetrics {
                 batch_items as f64 / decode_batches as f64
             },
             inference_errors: self.inference_errors.load(Ordering::Relaxed),
+            auth_rejections: self.auth_rejections.load(Ordering::Relaxed),
+            rate_limited: self.rate_limited.load(Ordering::Relaxed),
+            tenant_throttled: self.tenant_throttled.load(Ordering::Relaxed),
+            prefix_cache_hits: self.prefix_cache_hits.load(Ordering::Relaxed),
+            prefix_cache_misses: self.prefix_cache_misses.load(Ordering::Relaxed),
+            prefix_cache_evictions: self.prefix_cache_evictions.load(Ordering::Relaxed),
+            prefix_cache_prefill_tokens_saved: self
+                .prefix_cache_prefill_tokens_saved
+                .load(Ordering::Relaxed),
         }
     }
 }
@@ -114,4 +162,18 @@ pub struct MetricsSnapshot {
     pub average_batch_size: f64,
     /// Inference failures.
     pub inference_errors: u64,
+    /// Authentication rejections (missing or invalid bearer key).
+    pub auth_rejections: u64,
+    /// Requests rejected by the per-key rate limiter.
+    pub rate_limited: u64,
+    /// Requests rejected by the per-tenant concurrency limiter.
+    pub tenant_throttled: u64,
+    /// Prefix-cache hits since startup.
+    pub prefix_cache_hits: u64,
+    /// Prefix-cache misses since startup.
+    pub prefix_cache_misses: u64,
+    /// Prefix-cache LRU evictions since startup.
+    pub prefix_cache_evictions: u64,
+    /// Prompt tokens whose prefill was skipped by a prefix-cache hit.
+    pub prefix_cache_prefill_tokens_saved: u64,
 }

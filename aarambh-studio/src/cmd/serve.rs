@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use aarambh_studio_inference::{InferenceEngine, ThinkingMode, ToolDefinition};
 use aarambh_studio_safety::{SafetyMode, SafetyPolicy};
-use aarambh_studio_serve::{BatcherConfig, ServeConfig, run_server};
+use aarambh_studio_serve::{
+    AuthConfig, BatcherConfig, PrefixCacheConfig, ServeConfig, TenantIsolationConfig, run_server,
+};
 use aarambh_studio_train::TrainingRunConfig;
 use clap::Args;
 use serde::Deserialize;
@@ -61,6 +63,21 @@ pub struct ServeArgs {
     /// Environment variable name holding the optional bearer API key.
     #[arg(long, default_value = "AARAMBH_STUDIO_STUDIO_API_KEY")]
     api_key_env: String,
+    /// Optional JSON file declaring multi-tenant API keys (Phase 51).
+    #[arg(long)]
+    api_keys: Option<PathBuf>,
+    /// Enable prompt-prefix caching for prefill reuse (Phase 51).
+    #[arg(long, default_value_t = false)]
+    prefix_cache: bool,
+    /// Maximum estimated KV bytes for the prefix cache (requires --prefix-cache).
+    #[arg(long, default_value_t = 64 * 1024 * 1024)]
+    prefix_cache_max_bytes: usize,
+    /// Maximum number of cached prefix entries (requires --prefix-cache).
+    #[arg(long, default_value_t = 64)]
+    prefix_cache_max_entries: usize,
+    /// Maximum simultaneous in-flight requests per tenant (requires --api-keys).
+    #[arg(long)]
+    max_concurrent_per_tenant: Option<usize>,
     /// Allowed CORS origin(s); repeat to enable multiple origins.
     #[arg(long)]
     cors_origin: Vec<String>,
@@ -114,6 +131,24 @@ pub fn run(args: ServeArgs) -> anyhow::Result<()> {
     let api_key = std::env::var(&args.api_key_env)
         .ok()
         .filter(|key| !key.is_empty());
+    let auth = match args.api_keys.as_ref() {
+        Some(path) => Some(AuthConfig::from_path(path).map_err(anyhow::Error::msg)?),
+        None => None,
+    };
+    let prefix_cache = if args.prefix_cache {
+        PrefixCacheConfig {
+            max_bytes: args.prefix_cache_max_bytes,
+            max_entries: args.prefix_cache_max_entries,
+        }
+    } else {
+        PrefixCacheConfig::DISABLED
+    };
+    let tenant_isolation = match args.max_concurrent_per_tenant {
+        Some(capacity) => TenantIsolationConfig {
+            max_concurrent_per_tenant: capacity,
+        },
+        None => TenantIsolationConfig::UNLIMITED,
+    };
     let safety_policy = SafetyPolicy::for_mode(safety_mode)
         .map(|policy| policy.with_audit_path(&args.safety_audit_log));
     let config = ServeConfig {
@@ -123,6 +158,9 @@ pub fn run(args: ServeArgs) -> anyhow::Result<()> {
         default_thinking,
         safety_policy,
         api_key,
+        auth,
+        prefix_cache,
+        tenant_isolation,
         cors_origins: args.cors_origin,
         default_tools,
         batcher: BatcherConfig {
