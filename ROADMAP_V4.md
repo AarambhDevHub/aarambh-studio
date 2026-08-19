@@ -1351,6 +1351,14 @@ git tag v4.0.0-alpha.12
 
 ## Phase 53 — Red-Team / Adversarial Safety Evaluation
 
+> **Status: shipped in v4.0.0-alpha.13 (Phase 53).** The `redteam/` module
+> lives in `aarambh-studio-safety`; the CLI ships `aarambh-studio eval
+> --redteam --redteam-report <path>`. The corpus is 24 hand-authored /
+> free-public-sourced cases across all four v4.0 surfaces; the composite
+> target drives the real safety layer, sandbox, orchestrator, and
+> server-auth boundaries end-to-end with zero failures. See
+> `docs/phase53_redteam.md`.
+
 **Duration:** 10–14 days | **Hardware:** i3 (text) + Kaggle (multimodal/execution)
 
 ### Goal
@@ -1365,7 +1373,7 @@ system-role/prompt-injection precedence rule (v4 §52).
 
 **`aarambh-studio-safety`:**
 ```
-[ ] src/redteam/harness.rs
+[x] src/redteam/harness.rs
       AdversarialCase — a labelled (input, expected_outcome) pair;
       expected_outcome is one of {refused, sanitized, executed_safely}
       Corpus, hand-authored and free/public-sourced only (same dataset-
@@ -1376,14 +1384,14 @@ system-role/prompt-injection precedence rule (v4 §52).
       orchestrator (v4 §62) to exceed its configured bounds, attempts
       to exhaust rate limits or bypass auth on the public server (v4
       §65)
-[ ] src/redteam/report.rs
+[x] src/redteam/report.rs
       RedTeamReport — pass/fail per case, with failures surfaced
       plainly, never silently excluded from the report
 ```
 
 **`aarambh-studio` CLI:**
 ```
-[ ] aarambh-studio eval --redteam --report redteam_report.json
+[x] aarambh-studio eval --redteam --report redteam_report.json
 ```
 
 ### Tests

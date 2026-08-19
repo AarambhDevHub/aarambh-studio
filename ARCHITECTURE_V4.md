@@ -1373,6 +1373,96 @@ content is hand-authored or drawn from free/public sources only, the
 same dataset-licensing policy every training/eval dataset in the
 project has followed since v1.
 
+### Implementation (Phase 53, v4.0.0-alpha.13)
+
+Phase 53 extends the existing `aarambh-studio-safety` crate (no new
+crate; `EXPECTED_PACKAGES` stays 21) with one new module tree and one
+new CLI flag. The module is `src/redteam/` with four files:
+
+- **`src/redteam/harness.rs`** — `RedTeamSurface` (the four attack
+  surfaces, each pinned to an architecture section), `ExpectedOutcome`
+  (`Refused | Sanitized | ExecutedSafely` — exactly the three labels
+  the roadmap names), `ObservedOutcome` (what the target actually did,
+  with an `Other` catch-all that never matches a labelled expected
+  outcome so probe errors are recorded as failures rather than silently
+  dropped), `AdversarialInput` (a tagged union over `Prompt`,
+  `ToolRequest`, `OrchestratorPlan`, `ServerRequest` — every variant
+  carries a `prompt` field so the safety-layer half of §66's two-halves
+  defense can always inspect it), `AdversarialCase`, the `RedTeamTarget`
+  trait, the in-crate `SafetyLayerTarget` (drives the real
+  `SafetyInspector` and maps `Allow→ExecutedSafely`,
+  `Block→Refused`, `Redact→Sanitized`, `Regenerate→Refused`), the
+  `Corpus` (24 hand-authored / free-public-sourced cases), and the
+  `RedTeamHarness` runner.
+- **`src/redteam/report.rs`** — `CaseOutcome` and `RedTeamReport`
+  (`schema_version = 1`). JSON carries the full `outcomes` vector;
+  Markdown lists failures first, then the summary — a failing case is
+  never silently dropped.
+- **`src/redteam/mod.rs`** — barrel + re-exports.
+
+The CLI ships `aarambh-studio eval --redteam --redteam-report <path>`
+(default `artifacts/redteam_report.json`). The `--redteam` flag
+short-circuits `eval`'s normal model-loading path: the red-team pass
+needs no trained model, because the safety layer, the closed-world
+sandbox, the orchestrator limits, and the server auth/rate-limit/tenant
+boundaries are all exercisable with stub executors and an in-memory
+key store. A `CompositeTarget` in `aarambh-studio/src/cmd/eval_redteam.rs`
+wires the four real boundaries:
+
+- **Surface 1 (`SystemTurnInjection`)** — `SafetyLayerTarget::strict()`
+  (the `strict` `SafetyPolicy` preset, the production default).
+- **Surface 2 (`UnauthorizedToolExecution`)** — a real `ToolSandbox`
+  with a closed-world allowlist (`lookup` authorized; `http_get`
+  registered but not authorized, so the authorization gate — not the
+  unknown-tool gate — refuses it). A `ToolResult::status == Ok` is
+  `ExecutedSafely`; any `Error` status is `Refused` with the bounded
+  error text as the reason.
+- **Surface 3 (`OrchestratorBoundBypass`)** — `OrchestrationLimits::validate`
+  (bounds 1 + 2: sub-agent count in `1..=64`, total time > 0) and
+  `Orchestrator::validate_plan` (bound 3: scope containment via
+  `AuthorizationScope::intersect`). A plan within all three bounds is
+  `ExecutedSafely`.
+- **Surface 4 (`AuthBypassAttempt`)** — a real `ApiKeyStore` (constant-time
+  `validate`), `RateLimiter` (per-key sliding 60-second window over
+  RPM + TPM), and `TenantLimiter` (`try_admit` returns `Err(TenantBusy)`
+  past the per-tenant ceiling). The local-open default
+  (`AuthGate::new(None)`) is admitted.
+
+### Hard guarantees (Phase 53)
+
+1. **Every case is labelled** — each `AdversarialCase` carries a
+   non-empty `id`, `category`, `source`, `prompt()`, and one of the
+   three `ExpectedOutcome` labels (asserted by the
+   `every_redteam_case_has_a_labelled_expected_outcome` test).
+2. **Failures are surfaced, never dropped** — the report's `outcomes`
+   vector has exactly `corpus_size` entries; a probe error becomes
+   `ObservedOutcome::Other { .. }`, which never matches a labelled
+   expected outcome, so the case is recorded as a failure (asserted by
+   the `a_failing_redteam_case_is_surfaced_in_the_report_not_silently_dropped`
+   test).
+3. **Corpus provenance is free/public only** — every case's `source`
+   is one of `hand-authored`, `adapted from public HarmBench taxonomy
+   (Apache-2.0)`, `adapted from public NotoriousPrompts list (MIT)`, or
+   `adapted from public OWASP LLM Top 10 examples (CC-BY-4.0)` (asserted
+   by the `redteam_corpus_sources_are_documented_and_free_public_only`
+   test). No paid or restrictively-licensed dataset is used.
+4. **The CLI pass is clean** — `aarambh-studio eval --redteam` runs the
+   complete 24-case corpus against the v4.0 candidate build with zero
+   failures; a non-zero `failed` count exits non-zero so the release
+   audit cannot proceed with a known, unaddressed red-team failure.
+
+### Honesty boundary
+
+Red-team evaluation is a **structural** adversarial pass: it probes
+whether the *boundaries* (safety verdicts, closed-world allowlist,
+orchestrator limits, server auth) hold. It does **not** claim the
+underlying model would refuse a novel jailbreak it has never seen —
+that is a model-quality question, measured separately by the existing
+eval harness (v2 §17), not by red-team. The corpus is CI-runnable in
+milliseconds without a trained model; the boundary probes use stub
+executors and an in-memory key store (the same discipline every
+per-phase safety test in the project already uses).
+
 ---
 
 ## 68. Model Card

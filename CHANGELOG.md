@@ -2,6 +2,83 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0-alpha.13] - 2026-08-19
+
+### Added
+
+- **Phase 53 — Red-Team / Adversarial Safety Evaluation:** a single
+  systematic, end-to-end adversarial-testing pass run once, near the end of
+  v4.0, against the complete v4.0 attack surface — distinct from the
+  unit-level safety tests each individual phase already wrote. The corpus
+  targets four boundaries, each pinned to an architecture section: the
+  safety layer (`ARCHITECTURE.md` §13) and system-turn precedence rule
+  (V4 §66), the closed-world sandboxed tool-execution boundary (V4 §61),
+  the orchestrator hard bounds (V4 §62), and the public-server auth /
+  rate-limit / tenant-isolation surface (V4 §65).
+  - New module tree `crates/aarambh-studio-safety/src/redteam/`
+    (`harness.rs`, `report.rs`, `mod.rs`) — extends the existing
+    `aarambh-studio-safety` crate (no new crate, no new external
+    dependency; `EXPECTED_PACKAGES` stays 21). Public API: `RedTeamSurface`,
+    `ExpectedOutcome` (`Refused | Sanitized | ExecutedSafely`),
+    `ObservedOutcome` (with an `Other` catch-all that never matches a
+    labelled expected outcome, so probe errors are recorded as failures
+    rather than silently dropped), `AdversarialInput` (`Prompt |
+    ToolRequest | OrchestratorPlan | ServerRequest` — every variant
+    carries a `prompt` field so the safety-layer half of §66's two-halves
+    defense can always inspect it), `AdversarialCase`, the `RedTeamTarget`
+    trait, the in-crate `SafetyLayerTarget` (drives the real
+    `SafetyInspector` and maps `Allow→ExecutedSafely`, `Block→Refused`,
+    `Redact→Sanitized`, `Regenerate→Refused`), the `Corpus` (24
+    hand-authored / free-public-sourced cases), the `RedTeamHarness`
+    runner, and `RedTeamReport` (`schema_version = 1`; JSON carries the
+    full `outcomes` vector, Markdown lists failures first).
+  - **The corpus (24 cases):** 8 system-turn-injection (§13 + §66), 6
+    unauthorized-tool-execution (§61), 5 orchestrator-bound-bypass (§62),
+    5 auth-bypass-attempt (§65). Every case carries a labelled
+    `expected_outcome` ∈ `{Refused, Sanitized, ExecutedSafely}` and a
+    documented free/public `source` (`hand-authored`, `adapted from public
+    HarmBench taxonomy (Apache-2.0)`, `adapted from public NotoriousPrompts
+    list (MIT)`, `adapted from public OWASP LLM Top 10 examples
+    (CC-BY-4.0)`). No paid or restrictively-licensed dataset is used; no
+    case text is copied verbatim from a paid source.
+  - **CLI:** `aarambh-studio eval --redteam --redteam-report <path>`
+    (default `artifacts/redteam_report.json`). The `--redteam` flag
+    short-circuits `eval`'s normal model-loading path — the red-team pass
+    needs no trained model, because the four boundaries are all exercisable
+    with stub executors and an in-memory key store. A `CompositeTarget` in
+    `aarambh-studio/src/cmd/eval_redteam.rs` wires the real `SafetyInspector`,
+    `ToolSandbox` + `AuthorizationScope`, `Orchestrator` +
+    `OrchestrationLimits` + `DelegationPlan`, and `ApiKeyStore` +
+    `RateLimiter` + `TenantLimiter`. A non-zero `failed` count exits
+    non-zero, so the release audit cannot proceed with a known, unaddressed
+    red-team failure.
+  - **Tests:** the three roadmap-named acceptance tests pass by name —
+    `every_redteam_case_has_a_labelled_expected_outcome`,
+    `a_failing_redteam_case_is_surfaced_in_the_report_not_silently_dropped`,
+    `redteam_corpus_sources_are_documented_and_free_public_only` — plus 13
+    supporting unit tests across the safety crate's `redteam` module and 10
+    composite-target tests in the CLI binary (one per surface boundary,
+    including `composite_target_passes_every_v4_corpus_case` which asserts
+    the end-to-end pass is clean). `scripts/phase53_smoke.sh` is the smoke
+    harness; `artifacts/phase53_redteam_report.json` is the canonical report.
+  - **Docs:** `docs/phase53_redteam.md` is the phase runbook; `ROADMAP_V4.md`
+    Phase 53, `ARCHITECTURE_V4.md` §67 (Implementation subsection + Hard
+    guarantees + Honesty boundary), and `SELF_LEARNING_V4.md` mark the phase
+    shipped.
+  - **Honesty boundary:** red-team evaluation is a *structural* adversarial
+    pass — it probes whether the *boundaries* hold, not whether the model
+    would refuse a novel jailbreak it has never seen (a model-quality question
+    measured by the existing eval harness, v2 §17). The corpus is
+    CI-runnable in milliseconds without a trained model.
+
+### Changed
+
+- Bumped workspace version from `4.0.0-alpha.12` to `4.0.0-alpha.13`.
+  `Cargo.lock` updated to match.
+- `.github/workflows/ci.yml` gains one CLI-smoke line,
+  `aarambh-studio eval --redteam --help` (mirrors the Phase 50/52 precedent
+  for new CLI flags).
+
 ## [4.0.0-alpha.12] - 2026-08-19
 
 ### Added

@@ -2,6 +2,7 @@ pub mod agent;
 pub mod convert;
 pub mod distill;
 pub mod eval;
+pub mod eval_redteam;
 pub mod finetune;
 pub mod infer;
 pub mod merge;

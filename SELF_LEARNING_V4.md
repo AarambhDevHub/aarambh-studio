@@ -510,6 +510,14 @@ inject content that manipulates the self-critique score rather than
 answering honestly). A self-learning session does not get a lighter
 adversarial bar than any other execution context in the project.
 
+> **Shipped in v4.0.0-alpha.13 (Phase 53).** The `redteam/` module in
+> `aarambh-studio-safety` and the `aarambh-studio eval --redteam` CLI
+> flag implement §67's adversarial pass. The corpus's `ToolRequest` and
+> `OrchestratorPlan` cases directly exercise the sandboxed execution
+> and orchestrator boundaries a self-learning session routes through;
+> a self-learning checkpoint cannot be admitted to a model card (§68)
+> until its red-team pass is clean. See `docs/phase53_redteam.md`.
+
 ## 56. Known Limitations (v4-Specific) and Closing Note
 
 - Selection-strategy-aware replay (§45) is instrumented but its actual

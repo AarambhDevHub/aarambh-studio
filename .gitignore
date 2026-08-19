@@ -37,3 +37,7 @@ data/eval/rag/*
 !data/eval/forgetting/
 data/eval/forgetting/*
 !data/eval/forgetting/probes.json
+
+# Phase 53 red-team: SafetyInspector audit logs (runtime, not source)
+safety_audit.jsonl
+**/safety_audit.jsonl
