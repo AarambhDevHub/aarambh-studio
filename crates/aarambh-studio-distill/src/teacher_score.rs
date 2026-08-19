@@ -314,6 +314,7 @@ mod tests {
             },
             merges: Vec::new(),
             merge_rank: HashMap::new(),
+            chat_template_version: None,
         }
     }
 
@@ -350,6 +351,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let model =
             AarambhModel::new(&model_config, VarBuilder::zeros(DType::F32, &device)).unwrap();
@@ -389,6 +391,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let model = AarambhModel::new(&config, VarBuilder::zeros(DType::F32, &device)).unwrap();
         let teacher = LocalCheckpointTeacher::new(model, device.clone());

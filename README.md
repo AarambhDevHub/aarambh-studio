@@ -53,6 +53,16 @@ eviction under a configurable memory ceiling). All three are opt-in; the
 loopback-only, unauthenticated single-user mode from v2 §31 remains the
 default. Still self-hosted — no billing, no auto-scaling.
 
+**v4.0.0-alpha.12** adds **system role, chat-template versioning, and context
+management (Phase 52)** — a formalization / retrofit pass on the model's I/O
+contract: a documented, first-class system role (` IMS` at id 17, the next
+free id — id 7 is `IMAGE` since v2 and is never reassigned), a
+`chat_template_version` tag on tokenizer config and checkpoint metadata with a
+fail-loud startup mismatch gate, a unified `ContextTruncationPolicy`
+(SlidingWindow / Summarize / Reject) referenced by every long-context feature,
+and a canonical `docs/SAMPLING_DEFAULTS.md` reference. Not a new capability — a
+documentation and versioning pass on what was under-specified.
+
 > [!IMPORTANT]
 > This is a source and engineering project. It does not publish crates to
 > crates.io and does not ship pretrained checkpoints, adapters, GGUF files, or
@@ -166,6 +176,8 @@ See the phase-specific docs for full walkthroughs with smoke fixtures:
 | Fine-tuning (SFT, adapters, GRPO, DPO) | `aarambh-studio finetune --help` |
 | Model merging (linear/SLERP/TIES/DARE/task-arithmetic) | [docs/phase50_model_merging.md](docs/phase50_model_merging.md) |
 | Multi-tenant serve + prefix caching (Phase 51) | [docs/phase51_public_serve.md](docs/phase51_public_serve.md) |
+| System role, chat-template versioning, context policy (Phase 52) | [docs/phase52_system_role_context.md](docs/phase52_system_role_context.md) |
+| Sampling defaults reference | [docs/SAMPLING_DEFAULTS.md](docs/SAMPLING_DEFAULTS.md) |
 | Self-learning | [SELF_LEARNING_V3.md](SELF_LEARNING_V3.md) |
 
 ```sh
@@ -362,7 +374,7 @@ reproducible bugs and scoped feature requests. Report vulnerabilities through
   author  = {Aarambh Dev Hub},
   year    = {2026},
   url     = {https://github.com/AarambhDevHub/aarambh-studio},
-  version = {4.0.0-alpha.11},
+  version = {4.0.0-alpha.12},
   license = {Apache-2.0}
 }
 ```

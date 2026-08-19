@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use aarambh_studio_core::{AarambhError, ModelConfig, Result};
 use aarambh_studio_finetune::{SftExample, Verifier};
 use aarambh_studio_inference::{GenerationConfig, GenerationOutput, GenerationStep};
+use aarambh_studio_tokenizer::{CURRENT_CHAT_TEMPLATE_VERSION, validate_chat_template_version};
 use candle_core::{DType, Device as CandleDevice};
 
 use crate::config::SelfLearnConfig;
@@ -102,6 +103,18 @@ impl SelfLearnLoop {
             dtype: build.dtype,
             seed: build.seed,
         })?;
+        // Phase 52 (SELF_LEARNING_V4.md §55): a self-learning session refuses
+        // to start if the checkpoint's declared chat-template version does not
+        // match what this build's replay-buffer schema expects. A session that
+        // ran for hours against a mismatched template would produce replay
+        // entries built on a misinterpreted prompt structure, silently
+        // corrupting the buffer — fail loud at session start instead.
+        validate_chat_template_version(
+            online_grpo.tokenizer().chat_template_version(),
+            CURRENT_CHAT_TEMPLATE_VERSION,
+            &[],
+        )
+        .map_err(AarambhError::Config)?;
         let mut forgetting = build
             .config
             .forgetting

@@ -25,8 +25,8 @@ use aarambh_studio_selflearn::{
 };
 use aarambh_studio_tokenizer::{
     ASSISTANT, AUDIO, AUDIO_END, AUDIO_ID, BpeTokenizer, DOCUMENT, DOCUMENT_END, DOCUMENT_ID,
-    FRAME_SEP, FRAME_SEP_ID, IMAGE, IMAGE_END, IMAGE_ID, PAGE_SEP, PAGE_SEP_ID, THINK_END_ID,
-    THINK_START_ID, USER, VIDEO, VIDEO_END, VIDEO_ID,
+    FRAME_SEP, FRAME_SEP_ID, IMAGE, IMAGE_END, IMAGE_ID, PAGE_SEP, PAGE_SEP_ID, SYSTEM,
+    THINK_END_ID, THINK_START_ID, USER, VIDEO, VIDEO_END, VIDEO_ID,
 };
 use aarambh_studio_train::TrainingRunConfig;
 use aarambh_studio_vision::{
@@ -90,6 +90,11 @@ pub struct InferArgs {
     /// Prompt text (or chat-template user message) fed to the model.
     #[arg(long)]
     pub prompt: String,
+    /// Operator-set system instructions prepended as a single leading system
+    /// turn (Phase 52). Omitted by default — a session with no system turn
+    /// reproduces the v1.0.0 prompt format exactly.
+    #[arg(long)]
+    pub system: Option<String>,
     /// Maximum number of new tokens generated.
     #[arg(long, default_value_t = 256)]
     pub max_tokens: usize,
@@ -290,6 +295,14 @@ pub fn run(args: InferArgs) -> anyhow::Result<()> {
     } else {
         prompt_for_mode(&args.prompt, thinking_mode)
     };
+    // Phase 52: an optional operator-set system turn is prepended as a single
+    // leading ` IMS` turn. Omitting it reproduces the v1.0.0 prompt format
+    // exactly; the system turn is purely additive.
+    let prompt = args
+        .system
+        .as_deref()
+        .map(|system| format!("{SYSTEM}\n{system}\n{prompt}"))
+        .unwrap_or(prompt);
     // Phase 49: retrieval-augmented generation splices retrieved chunks into
     // the prompt ahead of the user's question *before* any generation path
     // runs. The decoder is unchanged — this is pure prompt augmentation.
@@ -2606,6 +2619,7 @@ mod tests {
             frames: None,
             frame_sampling: None,
             prompt: "test".into(),
+            system: None,
             max_tokens: 8,
             temperature: 0.7,
             top_p: 0.9,

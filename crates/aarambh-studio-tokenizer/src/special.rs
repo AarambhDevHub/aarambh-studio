@@ -32,6 +32,15 @@ pub const PAGE_SEP: &str = "<page_sep>";
 pub const AUDIO: &str = "<audio>";
 /// Audio prefix boundary token string.
 pub const AUDIO_END: &str = "<audio_end>";
+/// System role marker token string (Phase 52).
+///
+/// ` IMS` is the first-class, optional system-turn marker formalized in
+/// Phase 52 (`ARCHITECTURE_V4.md` §66). A session may include at most one
+/// ` IMS` turn, placed before any ` IMS` (user) turn, carrying operator-
+/// or application-set instructions. Omitting it entirely reproduces every
+/// prior version's ` IMS... IMS` format exactly — the system role is
+/// purely additive.
+pub const SYSTEM: &str = " IMS";
 
 /// End-of-text token id.
 pub const ENDOFTEXT_ID: u32 = 0;
@@ -67,6 +76,13 @@ pub const PAGE_SEP_ID: u32 = 14;
 pub const AUDIO_ID: u32 = 15;
 /// Audio prefix boundary token id.
 pub const AUDIO_END_ID: u32 = 16;
+/// System role marker token id (Phase 52).
+///
+/// Reserved at id 17, immediately after the Phase 42 audio tokens, following
+/// the project's append-never-reassign discipline. `ARCHITECTURE_V4.md` §66
+/// notes the historical docs referred to "id 7"; id 7 has been `IMAGE` since
+/// v2.0.0 and is never reassigned, so the system marker takes the next free id.
+pub const SYSTEM_ID: u32 = 17;
 
 /// Reserved special token table in required id order.
 pub const SPECIAL_TOKENS: [(&str, u32); 15] = [
@@ -106,6 +122,33 @@ pub const AUDIO_SPECIAL_TOKENS: [(&str, u32); 17] = [
     (PAGE_SEP, PAGE_SEP_ID),
     (AUDIO, AUDIO_ID),
     (AUDIO_END, AUDIO_END_ID),
+];
+
+/// System-capable reserved token table accepted by v4.0 (Phase 52) checkpoints.
+///
+/// This is the canonical v4.0 special-token table: the Phase 42 audio table
+/// plus the ` IMS` system-role marker at id 17. It is a strict superset of
+/// [`AUDIO_SPECIAL_TOKENS`] — every audio-table pair appears, in order, at the
+/// front, with the single new system marker appended.
+pub const SYSTEM_SPECIAL_TOKENS: [(&str, u32); 18] = [
+    (ENDOFTEXT, ENDOFTEXT_ID),
+    (PAD, PAD_ID),
+    (BOS, BOS_ID),
+    (THINK_START, THINK_START_ID),
+    (THINK_END, THINK_END_ID),
+    (USER, USER_ID),
+    (ASSISTANT, ASSISTANT_ID),
+    (IMAGE, IMAGE_ID),
+    (IMAGE_END, IMAGE_END_ID),
+    (VIDEO, VIDEO_ID),
+    (VIDEO_END, VIDEO_END_ID),
+    (FRAME_SEP, FRAME_SEP_ID),
+    (DOCUMENT, DOCUMENT_ID),
+    (DOCUMENT_END, DOCUMENT_END_ID),
+    (PAGE_SEP, PAGE_SEP_ID),
+    (AUDIO, AUDIO_ID),
+    (AUDIO_END, AUDIO_END_ID),
+    (SYSTEM, SYSTEM_ID),
 ];
 
 /// Video-capable reserved token table accepted by Phase 35 checkpoints.
@@ -151,6 +194,45 @@ pub const TEXT_SPECIAL_TOKENS: [(&str, u32); 7] = [
 /// Number of reserved special tokens.
 pub const SPECIAL_TOKEN_COUNT: usize = SPECIAL_TOKENS.len();
 
+/// The chat-template shape version this build of the tokenizer expects.
+///
+/// Bumped exactly once per template-shape change in the project's history
+/// (`ARCHITECTURE_V4.md` §66):
+///
+/// | version | template shape                                              |
+/// |---------|-------------------------------------------------------------|
+/// | `1`     | v1.0.0 base ` IMS`/` IMS` chat format                       |
+/// | `2`     | v2.0.0 + image tokens                                       |
+/// | `3`     | v3.0.0 + video / document / tool tokens                     |
+/// | `4`     | v4.0.0 + system role formalized (` IMS`) + audio tokens     |
+pub const CURRENT_CHAT_TEMPLATE_VERSION: u32 = 4;
+
+/// Validate a checkpoint's declared chat-template version against an expected one.
+///
+/// A served checkpoint's `chat_template_version` must match (or be explicitly
+/// declared compatible with) the server's expected version. A concrete mismatch
+/// is a clear error, never a silent misinterpretation of prompt structure.
+///
+/// - `declared = Some(v)` where `v == expected` or `compatible.contains(&v)` → `Ok`.
+/// - `declared = Some(v)` otherwise → `Err` (clear mismatch message).
+/// - `declared = None` → `Ok` (undeclared / pre-Phase-52 legacy checkpoint; the
+///   project holds many such checkpoints, and absence is not a mismatch).
+pub fn validate_chat_template_version(
+    declared: Option<u32>,
+    expected: u32,
+    compatible: &[u32],
+) -> std::result::Result<(), String> {
+    match declared {
+        Some(version) if version == expected || compatible.contains(&version) => Ok(()),
+        Some(version) => Err(format!(
+            "chat_template_version mismatch: checkpoint declares {version}, \
+             but this build expects {expected} (compatible: {compatible:?}). \
+             Refusing to load to avoid silently misinterpreting prompt structure."
+        )),
+        None => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,5 +267,73 @@ mod tests {
                 "audio table id at position {idx} must be {idx}"
             );
         }
+    }
+
+    #[test]
+    fn system_table_is_strict_superset_of_audio_table() {
+        // Every (token, id) pair in the audio table must appear, in order, at
+        // the front of the system table, with the single system marker appended.
+        assert_eq!(SYSTEM_SPECIAL_TOKENS.len(), AUDIO_SPECIAL_TOKENS.len() + 1);
+        for (idx, entry) in AUDIO_SPECIAL_TOKENS.iter().enumerate() {
+            assert_eq!(SYSTEM_SPECIAL_TOKENS[idx], *entry);
+        }
+        assert_eq!(SYSTEM_SPECIAL_TOKENS[17], (SYSTEM, SYSTEM_ID));
+    }
+
+    #[test]
+    fn system_token_id_is_contiguous_after_audio_tokens() {
+        // Phase 52 system marker occupies id 17, immediately following the
+        // Phase 42 audio table (ids 0..=16).
+        assert_eq!(SYSTEM_ID, 17);
+        assert_eq!(SYSTEM_ID, AUDIO_END_ID + 1);
+    }
+
+    #[test]
+    fn system_table_ids_are_contiguous_from_zero() {
+        for (idx, &(_, id)) in SYSTEM_SPECIAL_TOKENS.iter().enumerate() {
+            assert_eq!(
+                id, idx as u32,
+                "system table id at position {idx} must be {idx}"
+            );
+        }
+    }
+
+    #[test]
+    fn chat_template_version_matches_current_v4_shape() {
+        assert_eq!(CURRENT_CHAT_TEMPLATE_VERSION, 4);
+    }
+
+    #[test]
+    fn chat_template_version_mismatch_is_rejected() {
+        // A checkpoint declaring version 2 (image-only) is not compatible with
+        // a v4 build that expects version 4 and declares no compatible fallbacks.
+        let err = validate_chat_template_version(Some(2), 4, &[]).unwrap_err();
+        assert!(
+            err.contains("mismatch"),
+            "error must mention mismatch, got: {err}"
+        );
+        assert!(
+            err.contains("2") && err.contains("4"),
+            "error must name both versions, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chat_template_version_match_is_accepted() {
+        assert!(validate_chat_template_version(Some(4), 4, &[]).is_ok());
+    }
+
+    #[test]
+    fn chat_template_version_compatible_fallback_is_accepted() {
+        // A v3 checkpoint served by a v4 build that explicitly declares v3
+        // shape-compatible is accepted.
+        assert!(validate_chat_template_version(Some(3), 4, &[3]).is_ok());
+    }
+
+    #[test]
+    fn chat_template_version_undeclared_is_accepted_as_legacy() {
+        // Pre-Phase-52 checkpoints do not declare a version; absence is not a
+        // mismatch and must not block loading.
+        assert!(validate_chat_template_version(None, 4, &[]).is_ok());
     }
 }

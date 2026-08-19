@@ -13,12 +13,40 @@ pub const MAX_MEDIA_DESCRIPTION_BYTES: usize = 4 * 1024;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 /// Policy used when a chain transcript approaches the model context limit.
+///
+/// This is the agent-crate view of the canonical
+/// [`aarambh_studio_inference::ContextTruncationPolicy`] (`ARCHITECTURE_V4.md`
+/// §66). The two map one-to-one; the canonical policy lives in the inference
+/// crate so every long-context feature references the same definition.
 pub enum EvictionPolicy {
-    /// Remove the oldest completed exchanges while retaining recent turns.
+    /// Remove the oldest completed exchanges while retaining recent turns —
+    /// maps to [`aarambh_studio_inference::ContextTruncationPolicy::SlidingWindow`].
     #[default]
     DropOldest,
-    /// Replace evicted exchanges with a compact model-produced summary.
+    /// Replace evicted exchanges with a compact model-produced summary — maps
+    /// to [`aarambh_studio_inference::ContextTruncationPolicy::Summarize`].
     Summarise,
+    /// Refuse to proceed rather than silently drop context — maps to
+    /// [`aarambh_studio_inference::ContextTruncationPolicy::Reject`]. The mandatory default for anything
+    /// safety- or execution-sensitive (Phase 47/48 sessions), where silently
+    /// losing a turn would change the meaning of the chain.
+    Reject,
+}
+
+impl From<EvictionPolicy> for aarambh_studio_inference::ContextTruncationPolicy {
+    /// Map an agent-crate [`EvictionPolicy`] onto the canonical
+    /// [`aarambh_studio_inference::ContextTruncationPolicy`].
+    fn from(policy: EvictionPolicy) -> Self {
+        match policy {
+            EvictionPolicy::DropOldest => {
+                aarambh_studio_inference::ContextTruncationPolicy::SlidingWindow
+            }
+            EvictionPolicy::Summarise => {
+                aarambh_studio_inference::ContextTruncationPolicy::Summarize
+            }
+            EvictionPolicy::Reject => aarambh_studio_inference::ContextTruncationPolicy::Reject,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

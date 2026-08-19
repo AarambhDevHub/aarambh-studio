@@ -897,6 +897,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let train_config = TrainConfig {
             lr: 1e-2,
@@ -988,6 +989,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let train_config = TrainConfig {
             lr: 1e-3,
@@ -1059,6 +1061,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let train_config = TrainConfig {
             lr: 1e-3,
@@ -1168,6 +1171,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let train_config = TrainConfig {
             lr: 1e-3,
@@ -1240,6 +1244,7 @@ mod tests {
             qat: Some(QatConfig::default()),
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let checkpoint_dir =
             std::env::temp_dir().join(format!("aarambh_qat_smoke_{}", std::process::id()));

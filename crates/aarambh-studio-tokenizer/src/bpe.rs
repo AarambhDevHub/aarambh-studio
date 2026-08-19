@@ -15,6 +15,13 @@ pub struct BpeTokenizer {
     pub merges: Vec<(String, String)>,
     /// Rank lookup for merge pairs.
     pub merge_rank: HashMap<(String, String), usize>,
+    /// Declared chat-template shape version (Phase 52, `ARCHITECTURE_V4.md` §66).
+    ///
+    /// `None` means the tokenizer JSON did not declare a version — every
+    /// pre-Phase-52 `tokenizer.json` loads as `None` and is treated as a
+    /// legacy checkpoint by [`special::validate_chat_template_version`]. A v4.0
+    /// tokenizer writes `Some(4)` here.
+    pub chat_template_version: Option<u32>,
 }
 
 impl BpeTokenizer {
@@ -119,10 +126,18 @@ impl BpeTokenizer {
             id_to_token,
         };
 
+        // Phase 52: an optional top-level `chat_template_version` records which
+        // chat-template shape this tokenizer was built against. Pre-Phase-52
+        // tokenizer JSON files omit it and load as `None` (legacy).
+        let chat_template_version = json["chat_template_version"]
+            .as_u64()
+            .map(|value| value as u32);
+
         Ok(Self {
             vocab,
             merges,
             merge_rank,
+            chat_template_version,
         })
     }
 
@@ -149,16 +164,36 @@ impl BpeTokenizer {
                 ])
             })
             .collect::<Vec<_>>();
-        let json = serde_json::json!({
-            "model": {
-                "type": "BPE",
-                "vocab": vocab,
-                "merges": merges,
-            }
-        });
+        let json = if let Some(version) = self.chat_template_version {
+            serde_json::json!({
+                "model": {
+                    "type": "BPE",
+                    "vocab": vocab,
+                    "merges": merges,
+                },
+                "chat_template_version": version,
+            })
+        } else {
+            serde_json::json!({
+                "model": {
+                    "type": "BPE",
+                    "vocab": vocab,
+                    "merges": merges,
+                }
+            })
+        };
         let content = serde_json::to_string_pretty(&json).map_err(AarambhError::Json)?;
         std::fs::write(path.as_ref(), content).map_err(AarambhError::Io)?;
         Ok(())
+    }
+
+    /// Return the chat-template shape version declared by this tokenizer, if any.
+    ///
+    /// `None` indicates a pre-Phase-52 tokenizer that did not record a version;
+    /// see [`special::validate_chat_template_version`] for how this is enforced
+    /// at server startup.
+    pub fn chat_template_version(&self) -> Option<u32> {
+        self.chat_template_version
     }
 
     /// Verify that reserved Aarambh special tokens use their required ids.
@@ -196,6 +231,17 @@ impl BpeTokenizer {
     /// Verify that Phase 42 audio tokens and all earlier special tokens use required ids.
     pub fn validate_audio_special_tokens(&self) -> Result<()> {
         for (token, id) in special::AUDIO_SPECIAL_TOKENS {
+            self.validate_special_token(token, id)?;
+        }
+        Ok(())
+    }
+
+    /// Verify that Phase 52 system tokens and all earlier special tokens use required ids.
+    ///
+    /// This is the canonical v4.0 special-token table: the Phase 42 audio table
+    /// plus the ` IMS` system-role marker at id 17.
+    pub fn validate_system_special_tokens(&self) -> Result<()> {
+        for (token, id) in special::SYSTEM_SPECIAL_TOKENS {
             self.validate_special_token(token, id)?;
         }
         Ok(())
@@ -248,6 +294,7 @@ impl BpeTokenizer {
             },
             merges: self.merges.clone(),
             merge_rank: self.merge_rank.clone(),
+            chat_template_version: self.chat_template_version,
         };
         upgraded.validate_video_special_tokens()?;
         Ok(upgraded)
@@ -299,6 +346,7 @@ impl BpeTokenizer {
             },
             merges: self.merges.clone(),
             merge_rank: self.merge_rank.clone(),
+            chat_template_version: self.chat_template_version,
         };
         upgraded.validate_document_special_tokens()?;
         Ok(upgraded)
@@ -350,8 +398,62 @@ impl BpeTokenizer {
             },
             merges: self.merges.clone(),
             merge_rank: self.merge_rank.clone(),
+            chat_template_version: self.chat_template_version,
         };
         upgraded.validate_audio_special_tokens()?;
+        Ok(upgraded)
+    }
+
+    /// Return an audio-capable tokenizer upgraded to the Phase 52 system layout.
+    ///
+    /// The single ` IMS` system-role marker is appended at id 17, immediately
+    /// after the Phase 42 audio tokens (ids 0..=16). Existing learned token ids
+    /// beginning at 17 are shifted by one. Callers must apply the same row
+    /// migration to the model embedding and an untied language-model head, and
+    /// should set the resulting tokenizer's [`chat_template_version`](Self::chat_template_version)
+    /// to [`special::CURRENT_CHAT_TEMPLATE_VERSION`] (4) once migration is complete.
+    pub fn upgraded_for_system(&self) -> Result<Self> {
+        self.validate_audio_special_tokens()?;
+        if self.validate_system_special_tokens().is_ok() {
+            return Ok(self.clone());
+        }
+        if let Some(id) = self.vocab.get_id(special::SYSTEM) {
+            return Err(AarambhError::Tokenizer(format!(
+                "cannot reserve system token {:?}: it already exists at id {id}",
+                special::SYSTEM
+            )));
+        }
+
+        let insertion = special::SYSTEM_ID;
+        let added =
+            (special::SYSTEM_SPECIAL_TOKENS.len() - special::AUDIO_SPECIAL_TOKENS.len()) as u32;
+        let mut token_to_id = HashMap::with_capacity(self.vocab.token_to_id.len() + added as usize);
+        for (token, id) in &self.vocab.token_to_id {
+            let migrated = if *id >= insertion { *id + added } else { *id };
+            token_to_id.insert(token.clone(), migrated);
+        }
+        for (token, id) in special::SYSTEM_SPECIAL_TOKENS
+            .iter()
+            .skip(special::AUDIO_SPECIAL_TOKENS.len())
+        {
+            token_to_id.insert((*token).to_string(), *id);
+        }
+
+        let max_id = token_to_id.values().copied().max().unwrap_or(0);
+        let mut id_to_token = vec![String::new(); (max_id + 1) as usize];
+        for (token, id) in &token_to_id {
+            id_to_token[*id as usize] = token.clone();
+        }
+        let upgraded = Self {
+            vocab: Vocab {
+                token_to_id,
+                id_to_token,
+            },
+            merges: self.merges.clone(),
+            merge_rank: self.merge_rank.clone(),
+            chat_template_version: self.chat_template_version,
+        };
+        upgraded.validate_system_special_tokens()?;
         Ok(upgraded)
     }
 
@@ -403,6 +505,7 @@ impl BpeTokenizer {
             },
             merges: self.merges,
             merge_rank: self.merge_rank,
+            chat_template_version: self.chat_template_version,
         };
         tokenizer.validate_document_special_tokens()?;
         Ok(tokenizer)
@@ -476,7 +579,13 @@ impl TokenizerLike for BpeTokenizer {
         let mut rest = text;
 
         while !rest.is_empty() {
-            let next_special = special::AUDIO_SPECIAL_TOKENS
+            // Phase 52: iterate the canonical v4 `SYSTEM_SPECIAL_TOKENS` table
+            // (a strict superset of the audio table). The `vocab.get_id(token)
+            // == Some(id)` filter means a tokenizer that does not actually
+            // contain a given special token at its required id simply BPE-splits
+            // the literal string, so legacy text/vision/video/document/audio
+            // tokenizers are unaffected.
+            let next_special = special::SYSTEM_SPECIAL_TOKENS
                 .iter()
                 .filter(|(token, id)| self.vocab.get_id(token) == Some(*id))
                 .filter_map(|(token, id)| rest.find(token).map(|pos| (pos, *token, *id)))
@@ -553,6 +662,7 @@ mod tests {
             },
             merges: Vec::new(),
             merge_rank: std::collections::HashMap::new(),
+            chat_template_version: None,
         }
     }
 
@@ -605,9 +715,138 @@ mod tests {
             },
             merges: Vec::new(),
             merge_rank: std::collections::HashMap::new(),
+            chat_template_version: None,
         };
         let ids = tokenizer.encode("<audio>").unwrap();
         // No id 15 in a text-only tokenizer; the literal is BPE-split.
         assert!(!ids.contains(&special::AUDIO_ID));
+    }
+
+    fn system_tokenizer() -> BpeTokenizer {
+        // Build a minimal v4.0 system-capable tokenizer: the 18 reserved
+        // special tokens (ids 0..=17) plus two learned tokens (ids 18, 19).
+        let mut token_to_id = std::collections::HashMap::new();
+        for (token, id) in special::SYSTEM_SPECIAL_TOKENS {
+            token_to_id.insert((*token).to_string(), id);
+        }
+        token_to_id.insert("hello".to_string(), 18);
+        token_to_id.insert("world".to_string(), 19);
+        let max_id = *token_to_id.values().max().unwrap();
+        let mut id_to_token = vec![String::new(); (max_id + 1) as usize];
+        for (token, id) in &token_to_id {
+            id_to_token[*id as usize] = token.clone();
+        }
+        BpeTokenizer {
+            vocab: Vocab {
+                token_to_id,
+                id_to_token,
+            },
+            merges: Vec::new(),
+            merge_rank: std::collections::HashMap::new(),
+            chat_template_version: Some(special::CURRENT_CHAT_TEMPLATE_VERSION),
+        }
+    }
+
+    #[test]
+    fn system_tokenizer_encodes_system_marker_as_single_token() {
+        // Phase 52: the encoder must recognize the SYSTEM marker as a single
+        // special token (id 17), distinct from the USER marker (id 5), not
+        // BPE-split it into characters.
+        let tokenizer = system_tokenizer();
+        tokenizer.validate_system_special_tokens().unwrap();
+        let prompt = format!(
+            "{}\nYou are helpful.\n{}\nhello",
+            special::SYSTEM,
+            special::USER,
+        );
+        let ids = tokenizer.encode(&prompt).unwrap();
+        assert!(
+            ids.contains(&special::SYSTEM_ID),
+            "encode must emit SYSTEM id 17, got {ids:?}"
+        );
+        assert!(
+            ids.contains(&special::USER_ID),
+            "encode must emit USER id 5, got {ids:?}"
+        );
+        assert_eq!(
+            ids.iter().filter(|&&id| id == special::SYSTEM_ID).count(),
+            1,
+            "exactly one system marker, got {ids:?}"
+        );
+    }
+
+    #[test]
+    fn audio_tokenizer_bpe_splits_system_marker_when_absent() {
+        // A Phase 42 audio tokenizer (no ` IMS` at id 17) must BPE-split the
+        // literal system marker string rather than emit a phantom id 17.
+        let tokenizer = audio_tokenizer();
+        let ids = tokenizer.encode(" IMS").unwrap();
+        assert!(!ids.contains(&special::SYSTEM_ID));
+    }
+
+    #[test]
+    fn upgraded_for_system_shifts_learned_tokens_by_one() {
+        // An audio tokenizer with a learned token at id 17 migrates to a
+        // system tokenizer where the learned token moves to id 18 and
+        // ` IMS` takes id 17.
+        let audio = audio_tokenizer();
+        assert_eq!(audio.vocab.get_id("hello"), Some(17));
+        let upgraded = audio.upgraded_for_system().unwrap();
+        upgraded.validate_system_special_tokens().unwrap();
+        assert_eq!(
+            upgraded.vocab.get_id(special::SYSTEM),
+            Some(special::SYSTEM_ID)
+        );
+        assert_eq!(upgraded.vocab.get_id("hello"), Some(18));
+        assert_eq!(upgraded.vocab.get_id("world"), Some(19));
+    }
+
+    #[test]
+    fn upgraded_for_system_is_idempotent() {
+        let system = system_tokenizer();
+        let upgraded = system.upgraded_for_system().unwrap();
+        // Already system-capable: returns a clone with the same layout.
+        assert_eq!(upgraded.vocab.get_id("hello"), Some(18));
+        assert_eq!(
+            upgraded.vocab.get_id(special::SYSTEM),
+            Some(special::SYSTEM_ID)
+        );
+    }
+
+    #[test]
+    fn chat_template_version_round_trips_through_json() {
+        // A v4.0 tokenizer that declares chat_template_version=4 must preserve
+        // it across save_pretrained -> from_pretrained.
+        let tokenizer = system_tokenizer();
+        let tmp =
+            std::env::temp_dir().join(format!("aarambh_phase52_v_{}.json", std::process::id()));
+        tokenizer.save_pretrained(&tmp).unwrap();
+        let reloaded = BpeTokenizer::from_pretrained(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert_eq!(
+            reloaded.chat_template_version(),
+            Some(special::CURRENT_CHAT_TEMPLATE_VERSION)
+        );
+    }
+
+    #[test]
+    fn legacy_tokenizer_json_loads_with_undeclared_version() {
+        // A pre-Phase-52 tokenizer JSON (no chat_template_version field) loads
+        // as None — absence is not a mismatch.
+        let json = serde_json::json!({
+            "model": {
+                "type": "BPE",
+                "vocab": { "a": 0 },
+                "merges": [],
+            }
+        });
+        let tmp = std::env::temp_dir().join(format!(
+            "aarambh_phase52_legacy_{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&tmp, serde_json::to_string_pretty(&json).unwrap()).unwrap();
+        let reloaded = BpeTokenizer::from_pretrained(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert_eq!(reloaded.chat_template_version(), None);
     }
 }

@@ -640,6 +640,7 @@ mod tests {
             },
             merges: Vec::new(),
             merge_rank: HashMap::new(),
+            chat_template_version: None,
         }
     }
 

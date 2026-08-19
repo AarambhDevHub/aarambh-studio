@@ -469,6 +469,11 @@ version in a row this crate has grown this way.
 
 ## 55. Context Management, Chat-Template Compatibility, and Red-Team Coverage in Self-Learning Sessions
 
+> **Status: shipped in v4.0.0-alpha.12 (Phase 52).** The session-start
+> `chat_template_version` gate is wired into `SelfLearnLoop::from_paths`; a
+> mismatch refuses to start the session. Self-learning sessions default to
+> `Reject` context policy.
+
 Three retrofit additions from `ARCHITECTURE_V4.md` §66–67 apply to
 self-learning sessions specifically, covered here rather than folded
 silently into an existing section since none of the three change the

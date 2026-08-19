@@ -1229,6 +1229,12 @@ git tag v4.0.0-alpha.11
 
 ## Phase 52 — System Role, Chat-Template Versioning, and Context Management
 
+> **Status: shipped in v4.0.0-alpha.12.** The ` IMS` system-role marker is
+> reserved at **id 17** (not id 7 — id 7 is `IMAGE` since v2 and is never
+> reassigned; the system marker takes the next free id, following the project's
+> append-never-reassign discipline). All six roadmap acceptance tests pass. See
+> `docs/phase52_system_role_context.md`.
+
 **Duration:** 7–10 days | **Hardware:** i3
 
 ### Goal
@@ -1247,7 +1253,7 @@ agentic chains and RAG-augmented prompts).
 
 **`aarambh-studio-tokenizer`:**
 ```
-[ ] src/special.rs
+[x] src/special.rs
       Document `<|system|>` (ID 7, already reserved since v1) as a
       first-class, optional turn: one system turn, placed before any
       user turn, carrying operator-set instructions
@@ -1255,7 +1261,7 @@ agentic chains and RAG-augmented prompts).
       checkpoint metadata — bumped exactly once per template-shape
       change in the project's history (v1=1, v2 image tokens=2, v3
       video/document/tool tokens=3, v4 audio tokens=4)
-[ ] Validation: a served checkpoint's chat_template_version must match
+[x] Validation: a served checkpoint's chat_template_version must match
     (or be explicitly declared compatible with) the server's expected
     version — mismatch is a clear startup error, never a silent
     misinterpretation of prompt structure
@@ -1263,18 +1269,18 @@ agentic chains and RAG-augmented prompts).
 
 **`aarambh-studio-safety`:**
 ```
-[ ] Precedence rule, made explicit and tested: system-turn content is
+[x] Precedence rule, made explicit and tested: system-turn content is
     always operator/application-supplied, never derived from user
     input — GenerationSession (v2 §31) must reject any code path that
     would let user-message content populate the system-turn position
-[ ] Existing prompt-injection detection (patterns like "new system
+[x] Existing prompt-injection detection (patterns like "new system
     prompt:") is documented as the *user-input-side* half of this
     defense; this phase adds and tests the *system-turn-side* half
 ```
 
 **`aarambh-studio-serve`:**
 ```
-[ ] /v1/chat/completions system-role mapping, formalized: a request's
+[x] /v1/chat/completions system-role mapping, formalized: a request's
     {"role": "system", ...} message maps onto exactly one <|system|>
     turn at the start of the assembled prompt; a request without one
     assembles a prompt with no <|system|> turn, reproducing v1.0.0's
@@ -1283,7 +1289,7 @@ agentic chains and RAG-augmented prompts).
 
 **`aarambh-studio-inference` / `aarambh-studio-agent`:**
 ```
-[ ] src/context_policy.rs
+[x] src/context_policy.rs
       ContextTruncationPolicy enum: SlidingWindow (drop oldest
       non-system turns first, system turn is never evicted) |
       Summarize (replace evicted turns with a generated summary turn,
@@ -1300,7 +1306,7 @@ agentic chains and RAG-augmented prompts).
 
 **`aarambh-studio-inference` (sampling defaults):**
 ```
-[ ] docs/SAMPLING_DEFAULTS.md — one canonical reference table:
+[x] docs/SAMPLING_DEFAULTS.md — one canonical reference table:
     recommended temperature/top-p/top-k per use case (deterministic
     tool-call generation, open-ended chat, creative writing, math/code
     verification), consolidating guidance that was previously scattered

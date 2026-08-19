@@ -353,6 +353,19 @@ impl<D: ChainDecoder, P: ToolResultProvider> ToolChain<D, P> {
             .decoder
             .context_limit()
             .saturating_sub(self.config.context_reserve);
+        // Phase 52: under `EvictionPolicy::Reject` the chain refuses to proceed
+        // rather than silently drop context — the mandatory default for safety-
+        // or execution-sensitive sessions. Check this before evicting anything.
+        if self.config.eviction_policy == EvictionPolicy::Reject
+            && state.transcript_token_ids().len() > usable
+        {
+            return Err(AgentError::Config(format!(
+                "eviction policy is `Reject`: chain transcript of {} tokens exceeds \
+                 usable context {usable}; refusing to drop context rather than proceed \
+                 with an incomplete picture",
+                state.transcript_token_ids().len()
+            )));
+        }
         while state.transcript_token_ids().len() > usable {
             if state.exchanges().len() <= self.config.keep_recent {
                 return Err(AgentError::Config(format!(
@@ -563,5 +576,57 @@ mod tests {
         let result = chain.run("find it", tools()).unwrap();
         assert_eq!(result.metrics.evictions, 1);
         assert_eq!(result.state.exchanges().len(), 1);
+    }
+
+    #[test]
+    fn context_pressure_reject_refuses_rather_than_silently_dropping() {
+        // Phase 52: under `EvictionPolicy::Reject` a chain that would exceed
+        // its usable context must error loudly instead of silently evicting a
+        // turn — the mandatory default for safety-/execution-sensitive sessions.
+        let decoder = FakeDecoder {
+            outputs: [
+                output(Some(call()), ""),
+                output(Some(call()), ""),
+                output(None, "done"),
+            ]
+            .into(),
+            context_limit: 10,
+        };
+        let config = ToolChainConfig {
+            context_reserve: 2,
+            keep_recent: 1,
+            eviction_policy: EvictionPolicy::Reject,
+            ..ToolChainConfig::default()
+        };
+        let mut chain = ToolChain::new(decoder, replay(2), config).unwrap();
+        let err = chain.run("find it", tools()).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Reject"),
+            "error must name the Reject policy, got: {msg}"
+        );
+        assert!(
+            msg.contains("refusing to drop context"),
+            "error must state the refusal, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn eviction_policy_maps_onto_canonical_context_truncation_policy() {
+        // Phase 52: the agent-crate `EvictionPolicy` maps one-to-one onto the
+        // canonical `ContextTruncationPolicy` defined in the inference crate.
+        use aarambh_studio_inference::ContextTruncationPolicy;
+        assert_eq!(
+            ContextTruncationPolicy::from(EvictionPolicy::DropOldest),
+            ContextTruncationPolicy::SlidingWindow
+        );
+        assert_eq!(
+            ContextTruncationPolicy::from(EvictionPolicy::Summarise),
+            ContextTruncationPolicy::Summarize
+        );
+        assert_eq!(
+            ContextTruncationPolicy::from(EvictionPolicy::Reject),
+            ContextTruncationPolicy::Reject
+        );
     }
 }

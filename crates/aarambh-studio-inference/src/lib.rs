@@ -3,6 +3,8 @@
 
 /// Best-of-N test-time compute scaling.
 pub mod best_of_n;
+/// Multi-turn context-truncation policy (Phase 52).
+pub mod context_policy;
 /// Generation engine and output types.
 pub mod engine;
 /// Grammar-constrained JSON decoding.
@@ -29,6 +31,10 @@ pub mod tool_calling;
 pub use best_of_n::{
     BestOfNConfig, BestOfNEngine, BestOfNOutput, CompletionVerifier, SelectionRationale,
     SelectionStrategy,
+};
+pub use context_policy::{
+    ContextTruncationPolicy, ContextTurn, TurnRole, apply as apply_context_policy,
+    total_tokens as context_total_tokens,
 };
 pub use engine::{
     FinishReason, GenerationConfig, GenerationOutput, GenerationPhase, GenerationSession,

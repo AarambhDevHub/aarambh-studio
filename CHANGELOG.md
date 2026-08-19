@@ -2,6 +2,60 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0-alpha.12] - 2026-08-19
+
+### Added
+
+- **Phase 52 — System Role, Chat-Template Versioning, and Context Management:**
+  a formalization / retrofit pass on the model's I/O contract as it stands
+  after every feature phase in v1–v4 — not a new capability, a documentation
+  and versioning pass on what was under-specified.
+  - **System role (` IMS`):** the system-role marker is reserved at **id 17**
+    (the next free id after `AUDIO_END`), with a documented role: one
+    optional, single-use, leading turn carrying operator-set instructions.
+    Omitting it reproduces every prior version's prompt format exactly. The
+    historical docs referred to "id 7"; id 7 is `IMAGE` since v2 and is never
+    reassigned — the marker takes the next free id, per the project's
+    append-never-reassign discipline. `SYSTEM_SPECIAL_TOKENS` (18 tokens, ids
+    0–17) is the canonical v4.0 table; `upgraded_for_system()` migrates an
+    existing audio checkpoint.
+  - **Chat-template versioning:** `chat_template_version: Option<u32>` is
+    stored on both `BpeTokenizer` (read from / written to `tokenizer.json`)
+    and `ModelConfig` (serde-defaulted). `None` = pre-Phase-52 legacy,
+    never a mismatch. `validate_chat_template_version()` is the fail-loud
+    gate; the serve server calls it at startup, a self-learning session at
+    session start. `CURRENT_CHAT_TEMPLATE_VERSION = 4`
+    (v1→1, v2 image→2, v3 video/doc/tool→3, v4 system+audio→4).
+  - **System-turn precedence (two-halves defense):** the user-input-side half
+    (`detect_injection`, since v1) is documented as such; the system-turn-side
+    half is the structural rule that the serve layer's `assemble_chat_prompt`
+    creates system turns exclusively from `role == "system" | "developer"`
+    messages — a user message can only ever occupy the ` IMS` position.
+  - **Context-truncation policy:** `ContextTruncationPolicy { SlidingWindow,
+    Summarize, Reject }` in new `aarambh-studio-inference/src/context_policy.rs`
+    — one canonical policy referenced by every long-context feature. The agent
+    crate's `EvictionPolicy` maps one-to-one onto it and now refuses loudly
+    under `Reject`; self-learning sessions default to `Reject`. The system
+    turn is never evicted under `SlidingWindow`/`Summarize`.
+  - **Sampling defaults:** `docs/SAMPLING_DEFAULTS.md` consolidates
+    temperature/top-p/top-k guidance into one canonical table by use case.
+  - **CLI:** `aarambh-studio infer` gains a `--system <text>` flag that
+    prepends a single leading system turn.
+  - **Tests:** all six roadmap-named acceptance tests pass by name, plus 20+
+    supporting tests across tokenizer / inference / finetune / serve / agent /
+    safety. `scripts/phase52_smoke.sh` is the smoke harness.
+  - **Docs:** `docs/phase52_system_role_context.md` is the phase runbook;
+    `ROADMAP_V4.md` Phase 52, `ARCHITECTURE_V4.md` §66, and
+    `SELF_LEARNING_V4.md` §55 mark the phase shipped.
+
+### Changed
+
+- `aarambh-studio-serve` now depends on `aarambh-studio-tokenizer` at runtime
+  (was a dev-dependency); the lib uses tokenizer constants and
+  `validate_chat_template_version` directly.
+- Bumped workspace version from `4.0.0-alpha.11` to `4.0.0-alpha.12`.
+  `Cargo.lock` updated to match.
+
 ## [4.0.0-alpha.11] - 2026-08-18
 
 ### Added
