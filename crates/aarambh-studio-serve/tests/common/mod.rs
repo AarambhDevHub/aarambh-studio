@@ -52,6 +52,7 @@ pub fn test_engine(n_layers: usize) -> InferenceEngine {
         },
         merges: Vec::new(),
         merge_rank: HashMap::new(),
+        chat_template_version: None,
     };
     let config = ModelConfig {
         vocab_size: 12,
@@ -70,6 +71,7 @@ pub fn test_engine(n_layers: usize) -> InferenceEngine {
         qat: None,
         norm_eps: 1e-5,
         tie_embeddings: true,
+        chat_template_version: None,
     };
     let device = Device::Cpu;
     let model = AarambhModel::new(&config, VarBuilder::zeros(DType::F32, &device)).unwrap();

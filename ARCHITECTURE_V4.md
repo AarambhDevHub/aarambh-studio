@@ -1229,6 +1229,15 @@ strictly-additive method on the inference engine:
 ---
 
 ## 66. System Role, Chat-Template Versioning, and Context Management
+> **Status: shipped in v4.0.0-alpha.12 (Phase 52).** The system-role
+> marker is reserved at **id 17** (the next free id after `AUDIO_END`), not
+> id 7 — id 7 has been `IMAGE` since v2.0.0 and is never reassigned, per the
+> project's append-never-reassign discipline. `SYSTEM_SPECIAL_TOKENS` (18
+> tokens, ids 0–17) is the canonical v4.0 table; `upgraded_for_system()`
+> migrates an existing audio checkpoint. `chat_template_version` is stored on
+> both `BpeTokenizer` and `ModelConfig` as `Option<u32>` (None = pre-Phase-52
+> legacy, never a mismatch). See `docs/phase52_system_role_context.md`.
+
 
 **Crate:** `aarambh-studio-tokenizer`, `aarambh-studio-safety`, `aarambh-studio-serve`, `aarambh-studio-inference`/`aarambh-studio-agent` | **Depends on:** `<|system|>` token reservation (v1, ID 7), v2 §31 (server), v3 §46/v4 §61–62 (agentic chains), v4 §63 (RAG)
 

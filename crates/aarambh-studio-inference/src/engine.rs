@@ -1240,6 +1240,7 @@ mod tests {
             },
             merges: vec![],
             merge_rank: HashMap::new(),
+            chat_template_version: None,
         }
     }
 
@@ -1262,6 +1263,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let vb = VarBuilder::zeros(DType::F32, &device);
         let model = AarambhModel::new(&config, vb).unwrap();
@@ -1361,6 +1363,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let vb = VarBuilder::zeros(DType::F32, &device);
         let model = AarambhModel::new(&config, vb).unwrap();
@@ -1371,6 +1374,7 @@ mod tests {
             },
             merges: vec![],
             merge_rank: HashMap::new(),
+            chat_template_version: None,
         };
         assert!(InferenceEngine::new(model, tokenizer, device).is_err());
     }

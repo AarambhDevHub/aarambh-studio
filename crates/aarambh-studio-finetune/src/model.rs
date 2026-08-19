@@ -717,6 +717,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let base_varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&base_varmap, DType::F32, &device);
@@ -760,6 +761,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let base_varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&base_varmap, DType::F32, &device);
@@ -814,6 +816,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let base_varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&base_varmap, DType::F32, &device);
@@ -877,6 +880,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let base_varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&base_varmap, DType::F32, &device);

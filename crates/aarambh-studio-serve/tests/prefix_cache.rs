@@ -226,6 +226,7 @@ fn kv_footprint_from_model_config_estimates_per_token_bytes() {
         qat: None,
         norm_eps: 1e-5,
         tie_embeddings: true,
+        chat_template_version: None,
     };
     let footprint = KvFootprint::from_model_config(&config, 4);
     // head_dim = 64 / 4 = 16. bytes_per_token = 3 * 2 * 2 * 16 * 4 = 768.

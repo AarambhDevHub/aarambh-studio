@@ -17,6 +17,7 @@ cuda = [
 aarambh-studio-core      = { path = "../aarambh-studio-core" }
 aarambh-studio-inference = { path = "../aarambh-studio-inference" }
 aarambh-studio-safety    = { path = "../aarambh-studio-safety" }
+aarambh-studio-tokenizer = { path = "../aarambh-studio-tokenizer" }
 axum                 = { workspace = true }
 futures-util         = { workspace = true }
 serde                = { workspace = true }

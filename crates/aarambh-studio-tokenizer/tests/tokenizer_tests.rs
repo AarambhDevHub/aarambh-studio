@@ -151,6 +151,7 @@ fn bpe_tokenizer_encode_decode_roundtrip() {
         vocab,
         merges,
         merge_rank,
+        chat_template_version: None,
     };
 
     let text = "hello world";
@@ -173,6 +174,7 @@ fn bpe_tokenizer_implements_tokenizer_like() {
         vocab,
         merges: vec![],
         merge_rank,
+        chat_template_version: None,
     };
 
     assert_eq!(tokenizer.vocab_size(), 2);
@@ -193,6 +195,7 @@ fn bpe_save_pretrained_roundtrip_preserves_merges() {
         },
         merges,
         merge_rank,
+        chat_template_version: None,
     };
     let path = std::env::temp_dir().join(format!(
         "aarambh_tokenizer_roundtrip_{}.json",
@@ -252,6 +255,7 @@ fn validate_special_tokens_rejects_plain_character_ids() {
         },
         merges: vec![],
         merge_rank: HashMap::new(),
+        chat_template_version: None,
     };
 
     let err = tokenizer.validate_special_tokens().unwrap_err();
@@ -275,6 +279,7 @@ fn image_tokenizer_upgrades_video_tokens_without_changing_learned_token_text() {
         },
         merges: Vec::new(),
         merge_rank: HashMap::new(),
+        chat_template_version: None,
     };
 
     tokenizer.validate_vision_special_tokens().unwrap();
@@ -300,6 +305,7 @@ fn legacy_image_tokenizer_does_not_emit_unmapped_video_ids() {
         },
         merges: Vec::new(),
         merge_rank: HashMap::new(),
+        chat_template_version: None,
     };
 
     assert!(!tokenizer.encode("<video>").unwrap().contains(&VIDEO_ID));
@@ -322,6 +328,7 @@ fn video_tokenizer_upgrades_document_tokens_without_changing_learned_text() {
         },
         merges: Vec::new(),
         merge_rank: HashMap::new(),
+        chat_template_version: None,
     };
 
     let upgraded = tokenizer.upgraded_for_document().unwrap();

@@ -388,6 +388,7 @@ mod tests {
             },
             merges: Vec::new(),
             merge_rank: HashMap::new(),
+            chat_template_version: None,
         }
     }
 
@@ -413,6 +414,7 @@ mod tests {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         };
         let model = aarambh_studio_model::AarambhModel::new(
             &config,

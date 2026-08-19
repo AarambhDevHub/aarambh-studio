@@ -812,6 +812,15 @@ pub struct ModelConfig {
     pub norm_eps: f64,
     /// Whether the output head shares weights with token embeddings.
     pub tie_embeddings: bool,
+    /// Declared chat-template shape version (Phase 52, `ARCHITECTURE_V4.md` §66).
+    ///
+    /// `None` means the checkpoint predates Phase 52 and did not declare a
+    /// version; a v4.0 checkpoint records `Some(4)`. A server refuses to load a
+    /// checkpoint whose declared version it does not recognize — the
+    /// `aarambh_studio_tokenizer::validate_chat_template_version` function
+    /// enforces this at server startup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_template_version: Option<u32>,
 }
 
 impl ModelConfig {
@@ -834,6 +843,7 @@ impl ModelConfig {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         }
     }
 
@@ -856,6 +866,7 @@ impl ModelConfig {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         }
     }
 
@@ -878,6 +889,7 @@ impl ModelConfig {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         }
     }
 
@@ -900,6 +912,7 @@ impl ModelConfig {
             qat: None,
             norm_eps: 1e-5,
             tie_embeddings: true,
+            chat_template_version: None,
         }
     }
 

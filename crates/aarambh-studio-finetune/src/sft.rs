@@ -2,7 +2,9 @@ use std::fs;
 use std::path::Path;
 
 use aarambh_studio_core::{AarambhError, Device, Result, TokenizerLike};
-use aarambh_studio_tokenizer::{ASSISTANT, ENDOFTEXT, PAD_ID, THINK_END, THINK_START, USER};
+use aarambh_studio_tokenizer::{
+    ASSISTANT, ENDOFTEXT, PAD_ID, SYSTEM, THINK_END, THINK_START, USER,
+};
 use candle_core::Tensor;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -51,6 +53,27 @@ impl ChatTemplate {
     pub fn prefix(&self, instruction: &str, input: Option<&str>) -> String {
         let instruction = join_instruction_input(instruction, input);
         format!("{USER}\n{instruction}\n{ASSISTANT}\n")
+    }
+
+    /// Format the prompt prefix with a leading operator-set system turn (Phase 52).
+    ///
+    /// Produces ` IMS\n{system}\n IMS\n{instruction}[\n{input}]\n IMS\n`. The
+    /// system turn is optional and single-use: a caller that has no system
+    /// instructions uses [`prefix`](Self::prefix) instead, which reproduces the
+    /// v1.0.0 ` IMS... IMS` format exactly.
+    ///
+    /// The existing loss-mask rule ([`build_loss_mask`]) masks every position
+    /// before the ` IMS` token, so a leading system turn is excluded from the
+    /// loss by construction — no training-code change is needed, only this
+    /// documented prefix.
+    pub fn prefix_with_system(
+        &self,
+        system: &str,
+        instruction: &str,
+        input: Option<&str>,
+    ) -> String {
+        let instruction = join_instruction_input(instruction, input);
+        format!("{SYSTEM}\n{system}\n{USER}\n{instruction}\n{ASSISTANT}\n")
     }
 
     /// Format the assistant target text.
@@ -419,7 +442,8 @@ fn join_instruction_input(instruction: &str, input: Option<&str>) -> String {
 mod tests {
     use super::*;
     use aarambh_studio_tokenizer::{
-        ASSISTANT_ID, BpeTokenizer, ENDOFTEXT_ID, THINK_END_ID, THINK_START_ID, USER_ID, Vocab,
+        ASSISTANT_ID, BpeTokenizer, ENDOFTEXT_ID, SYSTEM_ID, THINK_END_ID, THINK_START_ID, USER_ID,
+        Vocab,
     };
     use std::collections::HashMap;
 
@@ -481,10 +505,66 @@ mod tests {
         assert_eq!(mask[0].last().copied(), Some(0));
     }
 
+    #[test]
+    fn sft_loss_mask_correctly_covers_a_leading_system_turn() {
+        // Phase 52: a leading operator-set system turn must be excluded from the
+        // SFT loss. `build_loss_mask` masks every position before the assistant
+        // (` IMS`) position, so a system turn placed before the user turn is
+        // covered by construction — this test pins that invariant.
+        let tokenizer = test_tokenizer();
+        let template = ChatTemplate;
+        let prefix = template.prefix_with_system("Hi", "Plan", None);
+        let target = template.target("Hello");
+
+        let prefix_ids = tokenizer.encode(&prefix).unwrap();
+        let target_ids = tokenizer.encode(&target).unwrap();
+        assert!(
+            prefix_ids.contains(&SYSTEM_ID),
+            "prefix must contain the system marker token, got {prefix_ids:?}"
+        );
+
+        let prefix_len = prefix_ids.len();
+        let mut ids = prefix_ids.clone();
+        ids.extend(target_ids);
+        let mask = build_loss_mask(prefix_len, ids.len());
+
+        // The system marker sits inside the prefix, so its position is masked.
+        let system_pos = ids
+            .iter()
+            .position(|&id| id == SYSTEM_ID)
+            .expect("system marker present in the sequence");
+        assert!(
+            system_pos < prefix_len,
+            "system marker must live in the masked prefix region"
+        );
+        // mask[i] corresponds to predicting token i+1. When the system marker is
+        // not the very first token, the position predicting it (system_pos - 1)
+        // must carry no loss. When it is the first token there is no predicting
+        // position to check — it is trivially outside the supervised region.
+        if system_pos > 0 {
+            assert_eq!(
+                mask[system_pos - 1],
+                0,
+                "no loss on the system-turn position"
+            );
+        }
+
+        // Every position before the assistant target is masked (0); every
+        // position from the assistant target onward is supervised (1).
+        for (idx, &value) in mask.iter().enumerate() {
+            if idx + 1 < prefix_len {
+                assert_eq!(value, 0, "prefix position {idx} must be masked");
+            } else {
+                assert_eq!(value, 1, "target position {idx} must be supervised");
+            }
+        }
+    }
+
     fn test_tokenizer() -> BpeTokenizer {
         let mut token_to_id = HashMap::from([
             (USER.to_string(), USER_ID),
             (ASSISTANT.to_string(), ASSISTANT_ID),
+            (SYSTEM.to_string(), SYSTEM_ID),
             (THINK_START.to_string(), THINK_START_ID),
             (THINK_END.to_string(), THINK_END_ID),
             (ENDOFTEXT.to_string(), ENDOFTEXT_ID),
@@ -513,6 +593,7 @@ mod tests {
             },
             merges: vec![],
             merge_rank: HashMap::new(),
+            chat_template_version: None,
         }
     }
 }

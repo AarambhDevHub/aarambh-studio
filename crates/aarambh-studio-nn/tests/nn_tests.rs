@@ -72,6 +72,7 @@ fn rope_scaling_none_matches_v1_output_exactly() {
         qat: None,
         norm_eps: 1e-5,
         tie_embeddings: true,
+        chat_template_version: None,
     };
     let old = RopeCache::new(
         cfg.max_seq_len,

@@ -169,6 +169,8 @@ pub fn run(args: ServeArgs) -> anyhow::Result<()> {
             batch_wait: Duration::from_millis(args.batch_wait_ms),
             prefill_chunk_size: args.prefill_chunk_size,
         },
+        expected_chat_template_version: aarambh_studio_tokenizer::CURRENT_CHAT_TEMPLATE_VERSION,
+        compatible_chat_template_versions: Vec::new(),
     };
     config.validate()?;
 
