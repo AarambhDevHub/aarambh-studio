@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "model_path": "checkpoints/v4/model.safetensors",
+  "tokenizer_path": "checkpoints/v4/tokenizer.json",
+  "config_path": "configs/train.toml",
+  "tasks": [
+    {
+      "name": "mmlu",
+      "metric": "accuracy",
+      "value": 0.72,
+      "higher_is_better": true,
+      "examples": 100,
+      "correct": 72,
+      "loss": null,
+      "ppl": null,
+      "details": {}
+    },
+    {
+      "name": "gsm8k",
+      "metric": "pass@1",
+      "value": 0.55,
+      "higher_is_better": true,
+      "examples": 50,
+      "correct": 27,
+      "loss": null,
+      "ppl": null,
+      "details": {}
+    },
+    {
+      "name": "humaneval",
+      "metric": "pass@1",
+      "value": 0.4,
+      "higher_is_better": true,
+      "examples": 40,
+      "correct": 16,
+      "loss": null,
+      "ppl": null,
+      "details": {}
+    }
+  ],
+  "context_len_used": 2048,
+  "max_new_tokens": 128,
+  "timestamp_unix": 1700000000
+}

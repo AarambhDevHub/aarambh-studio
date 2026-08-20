@@ -107,6 +107,30 @@ pub struct EvalArgs {
     /// Where to write the red-team JSON report (default: artifacts/redteam_report.json).
     #[arg(long, value_name = "PATH")]
     pub redteam_report: Option<PathBuf>,
+    /// Generate a Phase 54 model card from a scorecard + red-team report +
+    /// static metadata, then exit. No model required. Fails loudly if no
+    /// red-team report is present or the report is not clean.
+    #[arg(long)]
+    pub generate_model_card: bool,
+    /// Metadata TOML/JSON path for `--generate-model-card`
+    /// (default: configs/model_card_metadata.toml).
+    #[arg(long, value_name = "PATH")]
+    pub model_card_metadata: Option<PathBuf>,
+    /// Scorecard JSON path for `--generate-model-card`
+    /// (default: artifacts/eval_scorecard.json).
+    #[arg(long, value_name = "PATH")]
+    pub model_card_scorecard: Option<PathBuf>,
+    /// Red-team report JSON path for `--generate-model-card`
+    /// (default: artifacts/redteam_report.json).
+    #[arg(long, value_name = "PATH")]
+    pub model_card_redteam: Option<PathBuf>,
+    /// Output Markdown path for `--generate-model-card` (default: MODEL_CARD.md).
+    #[arg(long, value_name = "PATH")]
+    pub model_card_output: Option<PathBuf>,
+    /// Chat-template version to record on the model card (v4 §66). Defaults
+    /// to `CURRENT_CHAT_TEMPLATE_VERSION` (= 4).
+    #[arg(long, default_value_t = crate::cmd::eval_model_card::default_chat_template_version())]
+    pub model_card_chat_template_version: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -128,6 +152,21 @@ pub fn run(args: EvalArgs) -> anyhow::Result<()> {
         let report = crate::cmd::eval_redteam::run(&report_path)?;
         let _ = report;
         return Ok(());
+    }
+    if args.generate_model_card {
+        let (metadata, scorecard, redteam, output) = crate::cmd::eval_model_card::resolve_paths(
+            args.model_card_metadata.as_deref(),
+            args.model_card_scorecard.as_deref(),
+            args.model_card_redteam.as_deref(),
+            args.model_card_output.as_deref(),
+        );
+        return crate::cmd::eval_model_card::run(
+            &metadata,
+            &scorecard,
+            &redteam,
+            &output,
+            args.model_card_chat_template_version,
+        );
     }
 
     let config_path = args

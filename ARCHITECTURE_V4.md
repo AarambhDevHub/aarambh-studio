@@ -1498,6 +1498,91 @@ measured behavior — generation fails loudly if no red-team report is
 present for the checkpoint being documented, rather than shipping a
 model card with an empty or stale safety section.
 
+### Implementation (Phase 54, v4.0.0-alpha.14)
+
+The model-card logic lives in `crates/aarambh-studio-eval/src/model_card.rs`
+(no new crate; `EXPECTED_PACKAGES` stays 21; one new direct dep `toml` for
+metadata parsing, already in the workspace). Public API:
+
+- `DatasetEntry` — `{ name, source_url: Option<String>, license, size_examples, split }`.
+  The license tag is mandatory (SPDX-style identifier).
+- `ModelCardMetadata` — the four static fields (`intended_use`,
+  `training_data`, `known_limitations`, `hardware_requirements`), loadable
+  from TOML or JSON via `from_toml_path` / `from_json_path` / `from_path`
+  (auto-detects by extension). This is the one hand-authored input.
+- `ModelCardError` — five variants: `MissingRedTeamReport`,
+  `RedTeamReportUnreadable(String)`, `RedTeamReportNotClean { failed, corpus_size }`,
+  `MissingScorecard`, `ScorecardUnreadable(String)`, `MetadataUnreadable(String)`.
+- `ModelCard` — the seven §68 fields, plus `schema_version: u32` (= 1) and
+  `generated_at_unix_ms: u128`. Entry points:
+  - `assemble(metadata, scorecard, redteam_report, chat_template_version)` —
+    in-memory; fails loudly if `redteam_report.is_clean()` is false.
+  - `assemble_from_paths(metadata_path, scorecard_path, redteam_path,
+    chat_template_version)` — file-path; fails loudly if any file is missing
+    or the red-team report is not clean.
+  - `to_json()` — the machine-readable companion (validates against
+    `schemas/model-card-v1.schema.json`).
+  - `to_markdown()` — the canonical seven-section `MODEL_CARD.md`, with the
+    capabilities and red-team sections pulled verbatim from the real
+    `Scorecard::to_markdown()` / `RedTeamReport::to_markdown()` output.
+  - `write(markdown_path)` — writes both `.md` and `.json` companion.
+
+The CLI surfaces `aarambh-studio eval --generate-model-card --output
+MODEL_CARD.md` (plus `--model-card-metadata`, `--model-card-scorecard`,
+`--model-card-redteam`, `--model-card-chat-template-version` flags). The flag
+short-circuits `eval`'s normal model-loading path — the card is assembled
+from artefacts a real eval-harness run and a real red-team pass already
+produced, no model required (mirrors the Phase 53 `--redteam` no-model
+short-circuit). The runner lives in
+`aarambh-studio/src/cmd/eval_model_card.rs`.
+
+The one hand-authored input is `configs/model_card_metadata.toml`; the JSON
+companion validates against `schemas/model-card-v1.schema.json` (draft
+2020-12, mirroring `manas-forgetting-v1.schema.json`). The human-readable
+template + field guide is `docs/model_card_template.md`; the phase runbook is
+`docs/phase54_model_card.md`.
+
+### Hard guarantees (Phase 54)
+
+1. **Capabilities match the eval-harness run exactly** — the `capabilities`
+   field is the exact `Scorecard` passed to `assemble()`, byte-for-byte
+   equal. The Markdown capabilities section is the verbatim
+   `Scorecard::to_markdown()` output, never re-rendered by hand. (Asserted
+   by `model_card_eval_scores_match_the_actual_eval_harness_run_exactly`.)
+2. **Generation fails loudly if no red-team report is present** — a
+   checkpoint cannot get a model card without a clean red-team pass.
+   `assemble` returns `RedTeamReportNotClean` if `is_clean()` is false;
+   `assemble_from_paths` returns `RedTeamReportUnreadable` if the file is
+   missing. (Asserted by
+   `model_card_generation_fails_loudly_if_no_redteam_report_is_present`.)
+3. **Missing metadata or scorecard fails loudly** — `MetadataUnreadable`
+   and `ScorecardUnreadable` make every missing-input failure actionable.
+4. **The generated card has all seven §68 sections, in order** — the
+   Markdown renderer produces exactly the seven spec sections, and the
+   capabilities/red-team sections are the verbatim source renderers.
+5. **The JSON companion round-trips** — `to_json()` → `from_str()` produces
+   an equal card, so the machine-readable companion is always lossless.
+
+### Honesty boundary
+
+A model card is an **assembled** document, not a substitute for reading the
+eval-harness scorecard and the red-team report in full. The capabilities and
+red-team sections are the verbatim source renderers — a reader who needs the
+full `outcomes` vector (every red-team case's observed outcome) should
+consult the red-team report JSON directly, not the card's summary.
+
+The card does **not** claim the underlying model would refuse a novel
+jailbreak it has never seen — that is a model-quality question, measured
+separately by the existing eval harness (v2 §17). The card's red-team
+section is a **structural** safety gate: it asserts the checkpoint's
+red-team pass is clean (every case matched its labelled expected outcome),
+not that the model is adversarially robust in general.
+
+The static metadata fields (`intended_use`, `training_data`,
+`known_limitations`, `hardware_requirements`) are hand-authored and are the
+card's one non-pulled portion. They are the release operator's
+responsibility and are auditable in `configs/model_card_metadata.toml`.
+
 ---
 
 ## 69. Updated Dependency Layers

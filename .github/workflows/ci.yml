@@ -69,6 +69,7 @@ jobs:
           target/release/aarambh-studio agent --help
           target/release/aarambh-studio eval --help
           target/release/aarambh-studio eval --redteam --help
+          target/release/aarambh-studio eval --generate-model-card --help
           target/release/aarambh-studio quantise --help
           target/release/aarambh-studio convert --help
           target/release/aarambh-studio serve --help

@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AarambhDevHub/aarambh-studio/schemas/model-card-v1.schema.json",
+  "title": "Aarambh Model Card v1",
+  "description": "The machine-readable companion to MODEL_CARD.md for one released checkpoint configuration (ARCHITECTURE_V4.md §68). Capabilities and red-team summary are PULLED from real runs; the static fields are authored once per release.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at_unix_ms",
+    "intended_use",
+    "training_data",
+    "capabilities",
+    "known_limitations",
+    "redteam_summary",
+    "hardware_requirements",
+    "chat_template_version"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Model-card schema version. Bumped only on breaking card-shape changes."
+    },
+    "generated_at_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Generated-at Unix time in milliseconds."
+    },
+    "intended_use": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Static: intended-use statement."
+    },
+    "training_data": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Static: training-data provenance, license-tagged per entry.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "license", "size_examples", "split"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "source_url": {
+            "type": ["string", "null"]
+          },
+          "license": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "SPDX-style license identifier, e.g. CC-BY-3.0, MIT."
+          },
+          "size_examples": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "split": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "PULLED from an actual eval-harness run (v2 §17). The full Scorecard object — never hand-entered.",
+      "required": [
+        "schema_version",
+        "model_path",
+        "tokenizer_path",
+        "config_path",
+        "tasks",
+        "context_len_used",
+        "max_new_tokens",
+        "timestamp_unix"
+      ]
+    },
+    "known_limitations": {
+      "type": "array",
+      "description": "Static + eval-derived known limitations.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "redteam_summary": {
+      "type": "object",
+      "description": "PULLED from v4 §67's actual red-team report. Must satisfy is_clean() == true or the card would not have been assembled.",
+      "required": [
+        "schema_version",
+        "generated_at_unix_ms",
+        "corpus_size",
+        "passed",
+        "failed",
+        "outcomes"
+      ],
+      "properties": {
+        "schema_version": { "type": "integer", "const": 1 },
+        "generated_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "corpus_size": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "hardware_requirements": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Static: hardware requirements summary."
+    },
+    "chat_template_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4,
+      "description": "PULLED from v4 §66's chat-template version tag. 1=v1.0 base, 2=v2+image, 3=v3+video/doc/tool, 4=v4+system-role+audio (current)."
+    }
+  }
+}

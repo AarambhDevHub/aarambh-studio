@@ -2,6 +2,92 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0-alpha.14] - 2026-08-20
+
+### Added
+
+- **Phase 54 — Model Card & Release Documentation Standard:** one canonical,
+  assembled — not hand-written — document per released checkpoint
+  configuration, summarizing intended use, capabilities, known limitations,
+  training-data provenance, eval-harness scores, and red-team findings. This
+  has never existed as a single artifact; the information was previously
+  scattered across `ARCHITECTURE*.md`, `ROADMAP*.md`, and `README.md`. The
+  card is **generated** from an eval-harness scorecard (v2 §17) plus the
+  red-team report (v4 §67) plus static metadata (dataset list, license,
+  hardware requirements) — assembled, not authored from scratch each time, so
+  it cannot silently drift out of sync with actual eval numbers.
+  - New module `crates/aarambh-studio-eval/src/model_card.rs` — extends the
+    existing `aarambh-studio-eval` crate (no new crate, no new external
+    dependency; `EXPECTED_PACKAGES` stays 21; one new direct dep `toml` for
+    metadata parsing, already in the workspace). Public API: `DatasetEntry`
+    (`{ name, source_url, license, size_examples, split }` — license-tagged),
+    `ModelCardMetadata` (the four static fields, loadable from TOML or JSON),
+    `ModelCardError` (five variants: `MissingRedTeamReport`,
+    `RedTeamReportUnreadable`, `RedTeamReportNotClean { failed, corpus_size }`,
+    `MissingScorecard`, `ScorecardUnreadable`, `MetadataUnreadable`), and
+    `ModelCard` (the seven §68 fields in spec order: `intended_use`,
+    `training_data`, `capabilities: Scorecard` (PULLED), `known_limitations`,
+    `redteam_summary: RedTeamReport` (PULLED), `hardware_requirements`,
+    `chat_template_version: u32` (PULLED from v4 §66)). `ModelCard::assemble`
+    fails loudly if `redteam_report.is_clean()` is false; `assemble_from_paths`
+    fails loudly if any input file is missing or the red-team report is not
+    clean. `to_json()` produces the machine-readable companion (validates
+    against `schemas/model-card-v1.schema.json`); `to_markdown()` renders the
+    canonical seven-section `MODEL_CARD.md` with the capabilities and
+    red-team sections pulled verbatim from the real `Scorecard` /
+    `RedTeamReport` Markdown renderers.
+  - **CLI:** `aarambh-studio eval --generate-model-card --output MODEL_CARD.md`
+    plus `--model-card-metadata`, `--model-card-scorecard`,
+    `--model-card-redteam`, and `--model-card-chat-template-version` flags.
+    The `--generate-model-card` flag short-circuits `eval`'s normal
+    model-loading path — the model card is assembled from artefacts a real
+    eval-harness run and a real red-team pass already produced, no model
+    required (mirrors the Phase 53 `--redteam` no-model short-circuit). A new
+    `aarambh-studio/src/cmd/eval_model_card.rs` module resolves the four path
+    flags to their defaults and dispatches to `ModelCard::assemble_from_paths`.
+  - **Config:** `configs/model_card_metadata.toml` — the one hand-authored
+    input. Contains `intended_use`, `known_limitations`,
+    `hardware_requirements`, and `[[training_data]]` array-of-tables blocks
+    (each license-tagged with an SPDX-style identifier).
+  - **Schema:** `schemas/model-card-v1.schema.json` — a JSON Schema (draft
+    2020-12) validating the `ModelCard::to_json()` companion. Mirrors the
+    `manas-forgetting-v1.schema.json` convention.
+  - **Tests:** the two roadmap-named acceptance tests pass by name —
+    `model_card_eval_scores_match_the_actual_eval_harness_run_exactly` and
+    `model_card_generation_fails_loudly_if_no_redteam_report_is_present` —
+    plus 12 supporting unit tests across the eval crate's `model_card` module
+    (not-clean/metadata/scorecard fail-loudly corollaries, Markdown
+    seven-sections, JSON round-trip, capabilities/red-team verbatim-pull,
+    metadata TOML round-trip, write produces md+json, single-case clean
+    report, error-message actionability) and 4 CLI composite tests (default
+    paths, explicit overrides, default chat-template version, missing-redteam
+    fail-loudly). `scripts/phase54_smoke.sh` is the smoke harness;
+    `artifacts/phase54_model_card_smoke.md` (+ `.json`) is the canonical
+    smoke-generated card.
+  - **Docs:** `docs/phase54_model_card.md` is the phase runbook;
+    `docs/model_card_template.md` is the human-readable template + field
+    guide. `ROADMAP_V4.md` Phase 54, `ARCHITECTURE_V4.md` §68 (Implementation
+    subsection + Hard guarantees + Honesty boundary), and `SELF_LEARNING_V4.md`
+    mark the phase shipped.
+  - **Honesty boundary:** a model card is an **assembled** document, not a
+    substitute for reading the eval-harness scorecard and the red-team report
+    in full. The capabilities and red-team sections are the verbatim source
+    renderers — a reader who needs the full `outcomes` vector should consult
+    the red-team report JSON directly. The card does not claim the underlying
+    model would refuse a novel jailbreak; the red-team section is a
+    **structural** safety gate (the pass is clean), not a general
+    adversarial-robustness claim.
+
+### Changed
+
+- Bumped workspace version from `4.0.0-alpha.13` to `4.0.0-alpha.14`.
+  `Cargo.lock` updated to match.
+- `crates/aarambh-studio-eval/Cargo.toml` gains `toml = { workspace = true }`
+  for metadata parsing (already a workspace dep used by `aarambh-studio-train`).
+- `.github/workflows/ci.yml` gains one CLI-smoke line,
+  `aarambh-studio eval --generate-model-card --help` (mirrors the Phase 53
+  precedent for new CLI flags).
+
 ## [4.0.0-alpha.13] - 2026-08-19
 
 ### Added

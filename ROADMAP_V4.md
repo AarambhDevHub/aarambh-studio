@@ -1422,6 +1422,14 @@ git tag v4.0.0-alpha.13
 
 ## Phase 54 — Model Card & Release Documentation Standard
 
+> **Status: shipped in v4.0.0-alpha.14 (Phase 54).** The `model_card.rs`
+> module lives in `aarambh-studio-eval`; the CLI ships `aarambh-studio eval
+> --generate-model-card --output MODEL_CARD.md`. The card is assembled from
+> a real eval-harness scorecard (v2 §17), a real Phase 53 red-team report
+> (v4 §67), and static metadata — capabilities and red-team sections are
+> PULLED, never hand-entered. Generation fails loudly if no red-team report
+> is present or the report is not clean. See `docs/phase54_model_card.md`.
+
 **Duration:** 3–5 days | **Hardware:** i3
 
 ### Goal
@@ -1436,7 +1444,7 @@ ROADMAP*.md, and README.md.
 
 **`aarambh-studio-eval`:**
 ```
-[ ] src/model_card.rs
+[x] src/model_card.rs
       ModelCard — generated from an eval-harness run plus the redteam
       report (v4 §53) plus static metadata (dataset list, license,
       hardware requirements) — assembled, not hand-written from
@@ -1446,12 +1454,12 @@ ROADMAP*.md, and README.md.
 
 **`aarambh-studio` CLI:**
 ```
-[ ] aarambh-studio eval --generate-model-card --output MODEL_CARD.md
+[x] aarambh-studio eval --generate-model-card --output MODEL_CARD.md
 ```
 
 **Documentation:**
 ```
-[ ] MODEL_CARD.md template: Intended Use, Training Data & Licensing,
+[x] MODEL_CARD.md template: Intended Use, Training Data & Licensing,
     Capabilities (per eval-harness task), Known Limitations, Red-Team
     Summary (v4 §53), Hardware Requirements, Version & Chat-Template
     Compatibility (v4 §52)
@@ -1460,10 +1468,21 @@ ROADMAP*.md, and README.md.
 ### Tests
 ```rust
 #[test]
-fn model_card_eval_scores_match_the_actual_eval_harness_run_exactly() {}
+fn model_card_eval_scores_match_the_actual_eval_harness_run_exactly() {
+    // Implemented in crates/aarambh-studio-eval/src/model_card.rs.
+    // Asserts card.capabilities == the scorecard passed to assemble(),
+    // and that the Markdown capabilities section is the verbatim
+    // Scorecard::to_markdown() output — never re-rendered by hand.
+}
 
 #[test]
-fn model_card_generation_fails_loudly_if_no_redteam_report_is_present() {}
+fn model_card_generation_fails_loudly_if_no_redteam_report_is_present() {
+    // Implemented in crates/aarambh-studio-eval/src/model_card.rs.
+    // Half 1: a present-but-not-clean report returns
+    //         RedTeamReportNotClean { failed, corpus_size }.
+    // Half 2: a missing red-team report file returns
+    //         RedTeamReportUnreadable via assemble_from_paths.
+}
 ```
 
 ### Milestone

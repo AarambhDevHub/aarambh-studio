@@ -63,6 +63,19 @@ fail-loud startup mismatch gate, a unified `ContextTruncationPolicy`
 and a canonical `docs/SAMPLING_DEFAULTS.md` reference. Not a new capability — a
 documentation and versioning pass on what was under-specified.
 
+**v4.0.0-alpha.14** adds **model card & release documentation standard
+(Phase 54)** — one canonical, assembled — not hand-written — document per
+released checkpoint configuration, summarizing intended use, capabilities,
+known limitations, training-data provenance, eval-harness scores, and
+red-team findings. The card is **generated** from an eval-harness scorecard
+(v2 §17) plus the red-team report (v4 §67) plus static metadata (dataset
+list, license, hardware requirements), so it cannot silently drift out of
+sync with actual eval numbers. New `aarambh-studio-eval/src/model_card.rs`
+module (no new crate, no new external dependency) + `aarambh-studio eval
+--generate-model-card --output MODEL_CARD.md` CLI flag. Generation fails
+loudly if no red-team report is present or the report is not clean — a
+checkpoint cannot get a model card without a clean red-team pass.
+
 **v4.0.0-alpha.13** adds **red-team / adversarial safety evaluation (Phase
 53)** — a single systematic, end-to-end adversarial-testing pass run once,
 near the end of v4.0, against the complete v4.0 attack surface: the safety
@@ -193,6 +206,7 @@ See the phase-specific docs for full walkthroughs with smoke fixtures:
 | Multi-tenant serve + prefix caching (Phase 51) | [docs/phase51_public_serve.md](docs/phase51_public_serve.md) |
 | System role, chat-template versioning, context policy (Phase 52) | [docs/phase52_system_role_context.md](docs/phase52_system_role_context.md) |
 | Red-team / adversarial safety evaluation (Phase 53) | [docs/phase53_redteam.md](docs/phase53_redteam.md) |
+| Model card & release documentation standard (Phase 54) | [docs/phase54_model_card.md](docs/phase54_model_card.md) |
 | Sampling defaults reference | [docs/SAMPLING_DEFAULTS.md](docs/SAMPLING_DEFAULTS.md) |
 | Self-learning | [SELF_LEARNING_V3.md](SELF_LEARNING_V3.md) |
 
@@ -325,6 +339,9 @@ CUDA checks require a CUDA-capable environment and are intentionally opt-in.
 | [docs/phase48_orchestration.md](docs/phase48_orchestration.md) | Multi-agent orchestration: delegation plan, three hard bounds, failure isolation, and composability |
 | [docs/phase49_rag.md](docs/phase49_rag.md) | Retrieval-augmented generation: chunking, embedding heads, navigable small-world graph ANN, prompt augmentation, and honesty boundary |
 | [docs/phase50_model_merging.md](docs/phase50_model_merging.md) | Model merging / weight averaging: linear, SLERP, task-arithmetic, TIES-Merging, DARE, hard validation, and honesty boundary |
+| [docs/phase53_redteam.md](docs/phase53_redteam.md) | Red-team / adversarial safety evaluation: four-surface corpus, composite target, clean-pass gate |
+| [docs/phase54_model_card.md](docs/phase54_model_card.md) | Model card & release documentation standard: assembled (not hand-written) card from eval + red-team + metadata |
+| [docs/model_card_template.md](docs/model_card_template.md) | Model card template & field guide: the seven §68 sections, PULLED vs authored fields, fail-loudly invariants |
 | [RELEASE.md](RELEASE.md) | Source-release process and artifact policy |
 | [CHANGELOG.md](CHANGELOG.md) | Versioned implementation history |
 
@@ -390,7 +407,7 @@ reproducible bugs and scoped feature requests. Report vulnerabilities through
   author  = {Aarambh Dev Hub},
   year    = {2026},
   url     = {https://github.com/AarambhDevHub/aarambh-studio},
-  version = {4.0.0-alpha.13},
+  version = {4.0.0-alpha.14},
   license = {Apache-2.0}
 }
 ```

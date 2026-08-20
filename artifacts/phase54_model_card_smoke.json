@@ -1,0 +1,14 @@
+{
+  "phase": 54,
+  "version": "4.0.0-alpha.14",
+  "eval_crate_model_card_tests": "passed",
+  "cli_model_card_tests": "passed",
+  "cli_build": "passed",
+  "redteam_report": "present",
+  "scorecard_fixture": "written",
+  "end_to_end_generate_model_card": "passed",
+  "all_seven_sections_present": "passed",
+  "json_companion_round_trips": "passed",
+  "eval_help_generate_model_card_flag": "passed",
+  "model_card_path": "artifacts/phase54_model_card_smoke.md"
+}
