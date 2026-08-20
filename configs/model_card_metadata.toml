@@ -1,0 +1,50 @@
+# Phase 54 model-card static metadata template.
+#
+# This is the ONE hand-authored input to model-card generation. Everything
+# else — capabilities (eval-harness scorecard, v2 §17), red-team summary
+# (v4 §67), and chat-template version (v4 §66) — is PULLED from real runs
+# by `aarambh-studio eval --generate-model-card`, never typed here.
+#
+# See docs/phase54_model_card.md for the runbook and ARCHITECTURE_V4.md §68
+# for the design spec.
+#
+# NOTE: TOML requires all bare top-level keys to appear BEFORE any
+# [[training_data]] array-of-tables block. The training_data entries are
+# therefore listed last.
+
+intended_use = "aarambh-studio v4.0 research checkpoint for instruction-following, tool-use, multimodal, and long-context experiments. Intended for research and evaluation; not for production deployment."
+
+# Known limitations are static-authored here; eval-derived ones may be
+# appended at render time, but this list is the canonical baseline.
+known_limitations = [
+  "Not fine-tuned for safety; rely on the safety layer (§13), not the model.",
+  "Context window is bounded; long-context degradation is task-dependent (§41).",
+  "Tool-use accuracy depends on the closed-world allowlist quality (§61).",
+  "Multilingual coverage is incidental, not curated.",
+  "No production deployment; this is a research checkpoint only.",
+]
+
+hardware_requirements = "CPU inference: 16 GB RAM (q4_k_m quantized). GPU inference: 1x consumer GPU (bf16). Training: see ARCHITECTURE_V4.md §69 for the full hardware matrix across phases."
+
+# Each training-data entry is license-tagged so provenance is auditable
+# without re-deriving it. SPDX-style license identifiers preferred.
+[[training_data]]
+name = "wikitext-103"
+source_url = "https://huggingface.co/datasets/wikitext"
+license = "CC-BY-3.0"
+size_examples = 1801350
+split = "train"
+
+[[training_data]]
+name = "alpaca-cleaned"
+source_url = "https://huggingface.co/datasets/yahma/alpaca-cleaned"
+license = "CC-BY-NC-4.0"
+size_examples = 51763
+split = "train"
+
+[[training_data]]
+name = "tinyshakespeare"
+source_url = "https://github.com/karpathy/char-rnn"
+license = "MIT"
+size_examples = 1115394
+split = "train"

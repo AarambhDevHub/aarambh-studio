@@ -202,9 +202,11 @@ novel prompts — which is the eval harness's job, not the red-team's.
 
 ## What this enables next
 
-- **Phase 54 (Model Card, V4 §68)** consumes the red-team report directly:
-  `model_card_generation_fails_loudly_if_no_redteam_report_is_present` is one
-  of its acceptance tests. A checkpoint cannot get a model card without a
-  clean red-team pass.
+- **Phase 54 (Model Card, V4 §68)** — shipped in `v4.0.0-alpha.14` —
+  consumes the red-team report directly: the
+  `model_card_generation_fails_loudly_if_no_redteam_report_is_present`
+  acceptance test is one of Phase 54's two roadmap-named tests. A checkpoint
+  cannot get a model card without a clean red-team pass, enforced by
+  `ModelCard::assemble`'s `is_clean()` check. See `docs/phase54_model_card.md`.
 - **Phase 55 (Final Release, v4.0.0)** treats a known, unaddressed red-team
   failure as a release blocker — the release does not proceed with one.

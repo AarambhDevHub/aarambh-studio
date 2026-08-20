@@ -7,6 +7,8 @@ pub mod forgetting;
 pub mod generation;
 /// Shared task runner and eval context types.
 pub mod harness;
+/// Phase 54 model-card assembly (generated, not hand-written).
+pub mod model_card;
 /// Perplexity-on-holdout evaluation.
 pub mod ppl;
 /// Scorecard serialization and comparison.
@@ -26,6 +28,9 @@ pub use generation::{
     BestOfNOptions, BestOfNResult, best_of_n_generate, greedy_generate, sample_generate,
 };
 pub use harness::{EvalConfig, EvalContext, EvalTask, run_all};
+pub use model_card::{
+    DatasetEntry, MODEL_CARD_SCHEMA_VERSION, ModelCard, ModelCardError, ModelCardMetadata,
+};
 pub use ppl::{PplResult, compute_ppl};
 pub use report::{
     ForgettingReport, QatRobustnessReport, QatTaskRobustness, ScoreDelta, Scorecard,

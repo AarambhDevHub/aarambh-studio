@@ -516,7 +516,9 @@ adversarial bar than any other execution context in the project.
 > `OrchestratorPlan` cases directly exercise the sandboxed execution
 > and orchestrator boundaries a self-learning session routes through;
 > a self-learning checkpoint cannot be admitted to a model card (§68)
-> until its red-team pass is clean. See `docs/phase53_redteam.md`.
+> until its red-team pass is clean — enforced by `ModelCard::assemble`'s
+> `is_clean()` check since Phase 54 (`v4.0.0-alpha.14`). See
+> `docs/phase53_redteam.md` and `docs/phase54_model_card.md`.
 
 ## 56. Known Limitations (v4-Specific) and Closing Note
 
