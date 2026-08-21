@@ -320,7 +320,7 @@ fn rgba_to_rgb(rgba: Vec<u8>, width: u32, height: u32) -> Result<RgbImage> {
         )));
     }
     let mut rgb = Vec::with_capacity(pixels * 3);
-    for pixel in rgba.chunks_exact(4) {
+    for pixel in rgba.as_chunks::<4>().0 {
         rgb.extend_from_slice(&pixel[..3]);
     }
     RgbImage::from_raw(width, height, rgb)

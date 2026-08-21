@@ -178,8 +178,10 @@ fn decode_f32_tensor(shape: &[usize], payload: &[u8], device: &Device) -> Result
         ));
     }
     let values = payload
-        .chunks_exact(4)
-        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|chunk| f32::from_le_bytes(*chunk))
         .collect::<Vec<_>>();
     Ok(Tensor::from_vec(values, shape, device)?)
 }
@@ -231,7 +233,7 @@ fn decode_q4_k_m_tensor(shape: &[usize], payload: &[u8], device: &Device) -> Res
     }
     let target_len = shape.iter().product::<usize>();
     let mut values = Vec::with_capacity(payload.len() / Q4_K_M_ENCODED_SIZE * Q4_K_M_BLOCK_SIZE);
-    for chunk in payload.chunks_exact(Q4_K_M_ENCODED_SIZE) {
+    for chunk in payload.as_chunks::<Q4_K_M_ENCODED_SIZE>().0 {
         let mut block = [0u8; Q4_K_M_ENCODED_SIZE];
         block.copy_from_slice(chunk);
         values.extend_from_slice(&dequantise_block_q4_k_m(&block));
