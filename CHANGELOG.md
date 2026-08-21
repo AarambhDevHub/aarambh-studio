@@ -2,6 +2,104 @@
 
 > From first principles. From zero. From Rust.
 
+## [4.0.0] - 2026-08-21
+
+### Added
+
+- **Phase 55 — Final Source Release (v4.0.0):** the complete workspace is
+  frozen as application version **4.0.0 — the final planned version of
+  aarambh-studio.** Same release discipline as v1 §15, v2 §28, and v3 §40
+  in spirit, with the release *target* corrected and finalised: a GitHub
+  source release with every crate `publish = false`, **not** a crates.io
+  publish. aarambh-studio is an application, not a library — this is the
+  confirmed, final policy and it supersedes anything v3 §40 implied about
+  crates.io. No pretrained checkpoint, adapter, tokenizer, optimizer state,
+  SafeTensors, or GGUF file is attached at any version, including this one.
+  - **Version freeze:** every workspace package inherits version `4.0.0`
+    (workspace `version = "4.0.0"` in the root `Cargo.toml`, propagated to
+    all 21 packages via `version.workspace = true`). `Cargo.lock`
+    regenerated and committed; every release command uses `--locked`.
+    `aarambh-studio --version` reports `aarambh-studio 4.0.0`.
+  - **Release audit extended to cover every v4 crate surface:**
+    `scripts/phase28_release_audit.sh` now gates `ROADMAP_V4.md` for
+    unchecked `[ ]` tasks (in addition to `ROADMAP.md`, `ROADMAP_V2.md`,
+    `ROADMAP_V3.md`) and asserts the presence of the four v4-introduced /
+    v4-extended crates (`aarambh-studio-audio`, `aarambh-studio-retrieve`,
+    `aarambh-studio-agent`, `aarambh-studio-serve`) in the workspace so a
+    v4 surface cannot be silently dropped. `EXPECTED_PACKAGES` stays 21.
+    The audit continues to reject unfinished implementation markers
+    (`TODO`/`FIXME`/`HACK`/`XXX`/`todo!`/`unimplemented!`/not implemented),
+    unchecked roadmap tasks, publishable packages, version drift, empty
+    CUDA kernel bodies, tracked model artifacts, and `cargo publish` in
+    GitHub workflows — identical bar to every prior release.
+  - **Documentation finalisation:** `ARCHITECTURE_V4.md` (§69 final-version
+    statement), `ROADMAP_V4.md` (Phase 55 tasks marked complete and the
+    "no v5 roadmap" out-of-scope section retained), and `SELF_LEARNING_V4.md`
+    (§56 closing note) are finalised. `CHANGELOG.md` and `README.md` are
+    updated with the full v1 → v4 arc and the final-version statement. New
+    `.github/release-notes/v4.0.0.md` release notes; `RELEASE.md` rewritten
+    as the v4.0.0 runbook (correcting the stale `phase40_release_audit.sh`
+    references to the actual `scripts/phase28_release_audit.sh`).
+  - **Final-version statement:** v4.0.0 is the final planned version of
+    aarambh-studio. The v4 roadmap does not carry forward an "out of scope,
+    natural next version" section the way v2 and v3 did — no v5 roadmap
+    exists as of this release. The core engineering questions the project
+    set out to answer — can a complete LLM pipeline, including alignment,
+    multimodality, efficient serving, and safe tool use, be built from
+    scratch in Rust without Python — have been answered, demonstrated, and
+    documented in full, phase by phase.
+  - **Release workflow:** `.github/workflows/release.yml` triggers on the
+    `v4.0.0` tag, verifies `aarambh-studio 4.0.0`, and publishes the GitHub
+    Release from `.github/release-notes/v4.0.0.md` with only GitHub's
+    automatic source archives — no binary or model artifacts uploaded.
+
+### The v1 → v4 Arc (Summary)
+
+- **v1.0.0 (Phases 0–15):** the foundation — BPE tokenizer, RMSNorm, RoPE,
+  GQA, SwiGLU, KV cache, tied embeddings, AdamW + cosine schedule, gradient
+  accumulation/clipping, checkpoint resume, SafeTensors, the eval harness
+  (perplexity, MMLU-lite, HellaSwag, GSM8K, HumanEval-lite), the
+  prompt-injection / jailbreak / PII safety layer, audit logs, and the
+  first OpenAI-compatible loopback server.
+- **v2.0.0 (Phases 16–28):** first growth — long context with YaRN/NTK/linear
+  RoPE scaling, frozen CLIP-style vision encoder + image fusion, MoE with
+  shared experts, single-node multi-GPU BF16 training, speculative decoding,
+  LoRA/QLoRA/DoRA/QDoRA adapters, GRPO + DPO alignment, tool-call grammar +
+  caller-executed chains, and the v2.0.0 source release + release audit.
+- **v3.0.0 (Phases 29–40):** second growth — hybrid Gated DeltaNet +
+  DeepSeek Sparse Attention, fine-grained MoE with shared experts,
+  Multi-Token Prediction, on-policy distillation, native INT4/INT8 QAT,
+  native video (H.264) and document (PDF) understanding, long-horizon
+  tool-use chains, persistent forgetting diagnostics, Max thinking mode
+  (16,384-token budget), and the v3.0.0 source release.
+- **v4.0.0 (Phases 41–55):** completion — Multi-Head Latent Attention
+  (Phase 41, the third attention kind), native Audio modality (Phase 42),
+  sparse/grouped MoE dispatch (Phase 43, resolving v2/v3's deferred
+  optimisation), multi-node data-parallel training (Phase 44), test-time
+  compute scaling (Phase 45), RLAIF (Phase 46), sandboxed closed-world tool
+  execution (Phase 47), multi-agent orchestration (Phase 48), from-scratch
+  pure-Rust RAG (Phase 49), model merging / weight averaging (Phase 50),
+  public multi-tenant inference server + prefix caching (Phase 51), system
+  role + chat-template versioning + context-truncation policy (Phase 52),
+  red-team / adversarial safety evaluation (Phase 53), assembled model card
+  (Phase 54), and this final source release (Phase 55).
+
+### Changed
+
+- Bumped workspace version from `4.0.0-alpha.14` to `4.0.0`.
+  `Cargo.lock` regenerated to match (21 workspace member entries at `4.0.0`).
+- `scripts/phase54_smoke.sh` embedded model-card metadata `version` bumped
+  from `4.0.0-alpha.14` to `4.0.0`; `artifacts/phase54_model_card_smoke.json`
+  (+ `.md`) regenerated by the smoke harness at the new version.
+- `README.md` top-line "production source release" updated from `v3.0.0` to
+  `v4.0.0` with the v1 → v4 arc summary and the final-version statement;
+  citation `version` updated to `4.0.0`.
+- `RELEASE.md` rewritten as the v4.0.0 runbook (was the v3.0.0 runbook);
+  the stale `scripts/phase40_release_audit.sh` references are corrected to
+  `scripts/phase28_release_audit.sh`.
+- `.github/workflows/release.yml` retargeted from the `v3.0.0` tag to the
+  `v4.0.0` tag and the `v4.0.0.md` release notes.
+
 ## [4.0.0-alpha.14] - 2026-08-20
 
 ### Added

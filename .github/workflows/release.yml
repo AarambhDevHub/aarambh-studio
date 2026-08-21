@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - v3.0.0
+      - v4.0.0
 
 permissions:
   contents: write
@@ -15,7 +15,7 @@ env:
 
 jobs:
   release:
-    name: Validate and release v3.0.0 source
+    name: Validate and release v4.0.0 source
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +27,7 @@ jobs:
           components: clippy, rustfmt
 
       - name: Verify release tag
-        run: test "${GITHUB_REF_NAME}" = "v3.0.0"
+        run: test "${GITHUB_REF_NAME}" = "v4.0.0"
 
       - name: Format
         run: cargo fmt --all --check
@@ -52,19 +52,22 @@ jobs:
 
       - name: Verify CLI
         run: |
-          test "$(target/release/aarambh-studio --version)" = "aarambh-studio 3.0.0"
+          test "$(target/release/aarambh-studio --version)" = "aarambh-studio 4.0.0"
           target/release/aarambh-studio --version
           target/release/aarambh-studio --help
           target/release/aarambh-studio train --help
           target/release/aarambh-studio infer --help
           target/release/aarambh-studio agent --help
           target/release/aarambh-studio eval --help
+          target/release/aarambh-studio eval --redteam --help
+          target/release/aarambh-studio eval --generate-model-card --help
           target/release/aarambh-studio quantise --help
           target/release/aarambh-studio convert --help
           target/release/aarambh-studio finetune --help
           target/release/aarambh-studio distill --help
           target/release/aarambh-studio selflearn --help
           target/release/aarambh-studio serve --help
+          target/release/aarambh-studio merge --help
 
       - name: Dependency audit
         uses: rustsec/audit-check@v2
@@ -74,7 +77,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: aarambh-studio v3.0.0
-          body_path: .github/release-notes/v3.0.0.md
+          name: aarambh-studio v4.0.0
+          body_path: .github/release-notes/v4.0.0.md
           generate_release_notes: true
           make_latest: true

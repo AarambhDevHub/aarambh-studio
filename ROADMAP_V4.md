@@ -1513,17 +1513,17 @@ implied about crates.io.
 ### Tasks
 
 ```
-[ ] Every workspace package inherits version 4.0.0
-[ ] `Cargo.lock` committed, release commands use `--locked`
-[ ] Full production release audit extended to cover every v4 crate
+[x] Every workspace package inherits version 4.0.0
+[x] `Cargo.lock` committed, release commands use `--locked`
+[x] Full production release audit extended to cover every v4 crate
     surface (aarambh-studio-audio, aarambh-studio-retrieve, extended
     aarambh-studio-agent, extended aarambh-studio-serve)
-[ ] Documentation completion: ARCHITECTURE_V4.md, ROADMAP_V4.md,
+[x] Documentation completion: ARCHITECTURE_V4.md, ROADMAP_V4.md,
     SELF_LEARNING_V4.md finalised; CHANGELOG.md and README.md updated
     with the full v1 → v4 arc
-[ ] Release notes explicitly state: v4.0.0 is the final planned
+[x] Release notes explicitly state: v4.0.0 is the final planned
     version — no v5 roadmap exists as of this release
-[ ] Release audit rejects unfinished markers, unchecked roadmap tasks,
+[x] Release audit rejects unfinished markers, unchecked roadmap tasks,
     publishable packages, version drift, and tracked model artifacts —
     identical bar to every prior release
 ```

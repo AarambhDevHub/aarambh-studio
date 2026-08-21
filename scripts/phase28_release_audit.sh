@@ -70,10 +70,25 @@ if rg -n -U '__global__[^\{]+\{\s*\}' crates/aarambh-studio-kernel/kernels -g '*
   exit 1
 fi
 
-if rg -n '^\s*\[ \]' ROADMAP.md ROADMAP_V2.md ROADMAP_V3.md; then
+if rg -n '^\s*\[ \]' ROADMAP.md ROADMAP_V2.md ROADMAP_V3.md ROADMAP_V4.md; then
   echo "roadmap checklists must not contain unfinished tasks" >&2
   exit 1
 fi
+
+# Phase 55: the release audit is extended to cover every v4 crate surface.
+# The four v4-introduced / v4-extended crates must be present in the
+# workspace so the audit cannot silently drop a v4 surface.
+for crate in \
+  aarambh-studio-audio \
+  aarambh-studio-retrieve \
+  aarambh-studio-agent \
+  aarambh-studio-serve; do
+  if ! jq -e --arg name "$crate" \
+      '.packages | map(.name) | index($name)' <<<"$metadata" >/dev/null; then
+    echo "required v4 crate missing from workspace: $crate" >&2
+    exit 1
+  fi
+done
 
 tracked_artifacts="$(
   git ls-files \

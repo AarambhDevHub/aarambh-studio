@@ -138,7 +138,7 @@ HELP_OK="passed"
 cat >"$SCORECARD" <<JSON
 {
   "phase": 54,
-  "version": "4.0.0-alpha.14",
+  "version": "4.0.0",
   "eval_crate_model_card_tests": "$EVAL_TESTS_OK",
   "cli_model_card_tests": "$CLI_TESTS_OK",
   "cli_build": "$BUILD_OK",

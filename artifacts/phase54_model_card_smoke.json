@@ -1,6 +1,6 @@
 {
   "phase": 54,
-  "version": "4.0.0-alpha.14",
+  "version": "4.0.0",
   "eval_crate_model_card_tests": "passed",
   "cli_model_card_tests": "passed",
   "cli_build": "passed",

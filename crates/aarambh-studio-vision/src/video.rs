@@ -508,9 +508,7 @@ mod tests {
     #[test]
     fn scene_sampling_prioritizes_largest_change() {
         let mut frames = vec![vec![0; 16]; 6];
-        for value in &mut frames[3] {
-            *value = 255;
-        }
+        frames[3].fill(255);
         let selected = scene_aware_frame_indices(&frames, 4, 1);
         assert_eq!(selected.len(), 4);
         assert_eq!(selected[0], 0);
